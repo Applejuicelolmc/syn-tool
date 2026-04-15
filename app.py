@@ -13,6 +13,7 @@ import subprocess
 import datetime
 import io
 from pathlib import Path
+from typing import Optional
 from flask import Flask, request, jsonify, send_file, send_from_directory
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -168,7 +169,7 @@ def parse_excel(path: str) -> dict:
     return {"headers": headers, "rows": rows}
 
 
-def _find_col(headers: list, *keywords) -> str | None:
+def _find_col(headers: list, *keywords) -> Optional[str]:
     """Return first header that contains any of the keywords (case-insensitive)."""
     for h in headers:
         hl = h.lower()
@@ -177,7 +178,7 @@ def _find_col(headers: list, *keywords) -> str | None:
     return None
 
 
-def build_excel(data: dict, cfg: dict | None = None) -> openpyxl.Workbook:
+def build_excel(data: dict, cfg: Optional[dict] = None) -> openpyxl.Workbook:
     headers    = data.get("headers", [])
     rows       = data.get("rows", [])
     mailbox_gb = (cfg or load_config()).get("mailbox_gb", 10)

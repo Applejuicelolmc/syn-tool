@@ -24,7 +24,9 @@ export HOST="${HOST:-0.0.0.0}"
 export DATA_DIR="${DATA_DIR:-$TOOL_DIR/data}"
 
 echo "Starting Synology Storage Tool..."
-echo "URL: http://$(hostname -I | awk '{print $1}'):$PORT"
+NAS_IP=$(ip route get 1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)
+[ -z "$NAS_IP" ] && NAS_IP=$(hostname)
+echo "URL: http://$NAS_IP:$PORT"
 echo "Press Ctrl+C to stop."
 echo ""
 
