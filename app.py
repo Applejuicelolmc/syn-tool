@@ -304,7 +304,7 @@ def build_excel(data: dict, cfg: Optional[dict] = None) -> openpyxl.Workbook:
     # Identify special columns for formula reconstruction
     mailbox_h  = _find_col(headers, "mailbox")
     gebruik_h  = _find_col(headers, "gebruik", "used storage")
-    factuur_h  = _find_col(headers, "factur", "invoice")
+    factuur_h  = _find_col(headers, "factuur", "factureren", "invoice")
 
     def hdr_letter(h):
         if h is None:

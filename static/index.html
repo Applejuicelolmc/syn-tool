@@ -550,7 +550,7 @@ function setDirty(v) {
 function isStorageCol(header) {
   const h = (header || '').toLowerCase();
   return h.includes('opslag') || h.includes('storage') || h.includes('gebruik') ||
-         h.includes('factur') || h.includes('invoice');
+         h.includes('factuur') || h.includes('factureren') || h.includes('invoice');
 }
 function getUnit(header) { return isStorageCol(header) ? 'GB' : ''; }
 function findCol(headers, ...kws) {
@@ -732,7 +732,7 @@ async function loadExcel() {
 function renderExcel() {
   const headers     = S.excel.headers || [];
   const meta        = S.excel._meta   || {};
-  const facturenCol = findCol(headers, 'factur', 'invoice');
+  const facturenCol = findCol(headers, 'factuur', 'factureren', 'invoice');
   const mailboxCol  = findCol(headers, 'mailbox');
   const gebruiktCol = findCol(headers, 'gebruik', 'used');
 
@@ -870,7 +870,7 @@ function cellChanged(origIdx, col, val) {
   S.editBuffer[origIdx][col] = (val === '' ? null : (isNaN(+val) ? val : +val));
   // Update the calculated billing cell for this row
   const headers    = S.excel.headers || [];
-  const facturenCol = findCol(headers, 'factur', 'invoice');
+  const facturenCol = findCol(headers, 'factuur', 'factureren', 'invoice');
   if (facturenCol) {
     const billing = calcBilling(S.editBuffer[origIdx], headers);
     const tr = document.getElementById(`erow-${origIdx}`);
