@@ -10,7 +10,7 @@ Web dashboard for scanning NAS share sizes and managing customer billing Excel f
 
 **2. SSH into the NAS, clone the repo and run the installer:**
 ```sh
-git clone https://github.com/Applejuicelolmc/synology-tool.git /volume1/tools/syn-tool
+sudo git -c credential.helper= clone https://github.com/Applejuicelolmc/synology-tool.git /volume1/tools/syn-tool
 cd /volume1/tools/syn-tool
 sudo ./install.sh
 ```
@@ -27,7 +27,7 @@ Open `http://<NAS-IP>:8080` in your browser.
 ## Option B — Docker (DSM 7.2+)
 
 ```sh
-git clone https://github.com/Applejuicelolmc/synology-tool.git /volume1/tools/syn-tool
+sudo git -c credential.helper= clone https://github.com/Applejuicelolmc/synology-tool.git /volume1/tools/syn-tool
 cd /volume1/tools/syn-tool
 sudo docker-compose up -d
 ```
@@ -40,7 +40,7 @@ Open `http://<NAS-IP>:8080` in your browser.
 
 ```sh
 cd /volume1/tools/syn-tool
-sudo git pull
+sudo git -c credential.helper= pull
 sudo ./start.sh
 ```
 
