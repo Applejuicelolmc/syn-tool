@@ -5,8 +5,8 @@
 # Usage:
 #   1. Install Python 3.9 via Synology Package Center
 #   2. SSH into the NAS as admin
-#   3. Upload this project folder to the NAS (e.g. /volume1/tools/synology-tool)
-#   4. Run: sh install.sh
+#   3. Clone the repo: sudo git clone https://github.com/Applejuicelolmc/syn-tool.git /volume1/tools/syn-tool
+#   4. Run: sudo ./install.sh
 
 set -e
 
@@ -40,6 +40,13 @@ fi
 
 echo "Using Python: $PYTHON ($($PYTHON --version))"
 
+# Make scripts executable
+chmod +x "$TOOL_DIR/start.sh" "$TOOL_DIR/install.sh"
+
+# Create data directory with write permissions
+mkdir -p "$TOOL_DIR/data"
+chmod 755 "$TOOL_DIR/data"
+
 # Install pip if needed
 if ! "$PYTHON" -m pip --version >/dev/null 2>&1; then
     echo "Installing pip..."
@@ -53,5 +60,5 @@ echo "Installing Python dependencies..."
 echo ""
 echo "Installation complete!"
 echo ""
-echo "Start the tool with:  sh $TOOL_DIR/start.sh"
-echo "Then open:            http://<NAS-IP>:8080"
+echo "Start the tool with:  sudo ./start.sh"
+echo "Then open:            http://<NAS-IP>:9000"

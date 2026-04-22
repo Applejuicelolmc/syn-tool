@@ -23,6 +23,10 @@ export PORT="${PORT:-9000}"
 export HOST="${HOST:-0.0.0.0}"
 export DATA_DIR="${DATA_DIR:-$TOOL_DIR/data}"
 
+# Ensure data directory exists with correct permissions
+mkdir -p "$DATA_DIR"
+chmod 755 "$DATA_DIR"
+
 echo "Starting Synology Storage Tool..."
 NAS_IP=$(ip route get 1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)
 [ -z "$NAS_IP" ] && NAS_IP=$(hostname)
