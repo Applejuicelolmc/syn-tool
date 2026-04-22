@@ -19,7 +19,7 @@ for p in /var/packages/Python3.9/target/bin/python3.9 \
 done
 [ -z "$PYTHON" ] && PYTHON=python3
 
-export PORT="${PORT:-8080}"
+export PORT="${PORT:-9000}"
 export HOST="${HOST:-0.0.0.0}"
 export DATA_DIR="${DATA_DIR:-$TOOL_DIR/data}"
 

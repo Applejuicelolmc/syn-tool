@@ -20,7 +20,7 @@ sudo ./install.sh
 sudo ./start.sh
 ```
 
-Open `http://<NAS-IP>:8080` in your browser.
+Open `http://<NAS-IP>:9000` in your browser.
 
 ---
 
@@ -32,7 +32,7 @@ cd /volume1/tools/syn-tool
 sudo docker-compose up -d
 ```
 
-Open `http://<NAS-IP>:8080` in your browser.
+Open `http://<NAS-IP>:9000` in your browser.
 
 ---
 

@@ -664,7 +664,7 @@ def api_settings_post():
 
 if __name__ == "__main__":
     ensure_dirs()
-    port  = int(os.environ.get("PORT", 8080))
+    port  = int(os.environ.get("PORT", 9000))
     host  = os.environ.get("HOST", "0.0.0.0")
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     print(f"Synology Storage Tool  →  http://{host}:{port}")
