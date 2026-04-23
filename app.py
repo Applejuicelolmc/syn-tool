@@ -159,6 +159,10 @@ def compute_mapping_diff(headers: list, rows: list, mappings: dict) -> dict:
 def _btrfs_all_sizes(base: str) -> dict:
     """Return {full_path: size_bytes} for all direct-child subvolumes under base.
     Uses exactly 2 commands for the whole volume — fast, dedup-correct, matches DSM.
+
+    Prefers level-1 qgroups (1/<id>) which aggregate nested subvolumes — this is
+    what DSM uses and why it shows correct sizes for backup shares with nested data.
+    Falls back to level-0 (0/<id>) for shares without a level-1 qgroup.
     Returns empty dict if btrfs is unavailable or qgroups are disabled."""
     try:
         # Command 1: map subvolume ID → relative path for direct children only
@@ -177,8 +181,7 @@ def _btrfs_all_sizes(base: str) -> dict:
                 try:
                     path_idx = parts.index('path')
                     relpath = ' '.join(parts[path_idx + 1:])
-                    # Direct children only (no slash = not nested)
-                    if '/' not in relpath:
+                    if '/' not in relpath:   # direct children only
                         id_to_name[parts[1]] = relpath
                 except (ValueError, IndexError):
                     pass
@@ -186,7 +189,7 @@ def _btrfs_all_sizes(base: str) -> dict:
         if not id_to_name:
             return {}
 
-        # Command 2: get qgroup sizes for all subvolumes in one shot
+        # Command 2: get all qgroup sizes in one shot
         rq = subprocess.run(
             ["btrfs", "qgroup", "show", "--raw", base],
             capture_output=True, text=True, timeout=30
@@ -194,25 +197,34 @@ def _btrfs_all_sizes(base: str) -> dict:
         if rq.returncode != 0:
             return {}
 
-        result: dict = {}
+        level0: dict = {}
+        level1: dict = {}
         for line in rq.stdout.strip().split('\n'):
-            # Format: "0/258   <rfer_bytes>   <excl_bytes>"
             parts = line.split()
-            if len(parts) >= 2 and parts[0].startswith('0/'):
-                subvol_id = parts[0][2:]
+            if len(parts) >= 2 and '/' in parts[0]:
+                qlevel, subvol_id = parts[0].split('/', 1)
                 if subvol_id in id_to_name:
                     full_path = os.path.join(base, id_to_name[subvol_id])
-                    result[full_path] = int(parts[1])   # rfer = referenced bytes
+                    rfer = int(parts[1])
+                    if qlevel == '1':
+                        level1[full_path] = rfer   # aggregates nested subvolumes
+                    elif qlevel == '0':
+                        level0[full_path] = rfer   # top-level subvolume only
 
-        return result
+        # level-1 overrides level-0 where both exist
+        return {**level0, **level1}
     except Exception:
         return {}
 
 
 def _btrfs_single_size(path: str) -> Optional[int]:
     """Per-share btrfs qgroup lookup via subvolume show + qgroup show.
-    Uses a different kernel ioctl than the bulk list approach — works in more contexts
-    (e.g. Docker bind mounts where subvolume list misses some entries)."""
+    Uses a different kernel ioctl than the bulk list — works where subvolume list
+    misses entries (e.g. Docker bind mounts).
+
+    Prefers level-1 qgroup (1/<id>) which aggregates nested subvolumes — required for
+    backup shares (Office365BackUp, ActiveBackupforBusiness, GsuiteBackup) whose actual
+    data lives in nested subvolumes. Falls back to level-0 (0/<id>)."""
     try:
         rs = subprocess.run(
             ["btrfs", "subvolume", "show", path],
@@ -227,17 +239,28 @@ def _btrfs_single_size(path: str) -> Optional[int]:
                 break
         if not subvol_id:
             return None
-        target = f'0/{subvol_id}'
+
         rq = subprocess.run(
             ["btrfs", "qgroup", "show", "--raw", path],
             capture_output=True, text=True, timeout=30
         )
         if rq.returncode != 0:
             return None
+
+        level0_bytes: Optional[int] = None
+        level1_bytes: Optional[int] = None
         for line in rq.stdout.split('\n'):
             parts = line.split()
-            if len(parts) >= 2 and parts[0] == target:
-                return int(parts[1])
+            if len(parts) >= 2:
+                if parts[0] == f'1/{subvol_id}':
+                    level1_bytes = int(parts[1])
+                elif parts[0] == f'0/{subvol_id}':
+                    level0_bytes = int(parts[1])
+
+        # level-1 aggregates nested subvolumes — prefer it (matches DSM)
+        if level1_bytes is not None:
+            return level1_bytes
+        return level0_bytes
     except Exception:
         pass
     return None
