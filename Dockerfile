@@ -6,6 +6,10 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
+# btrfs-progs: needed for accurate share sizes on btrfs volumes (matches DSM display)
+RUN apt-get update && apt-get install -y --no-install-recommends btrfs-progs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first (layer caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -17,10 +21,10 @@ COPY static/ ./static/
 # Data directory (mount a volume here for persistence)
 RUN mkdir -p /app/data
 
-EXPOSE 8080
+EXPOSE 9000
 
 ENV HOST=0.0.0.0
-ENV PORT=8080
+ENV PORT=9000
 ENV DATA_DIR=/app/data
 
 CMD ["python", "app.py"]

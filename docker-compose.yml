@@ -5,20 +5,17 @@ services:
     build: .
     container_name: synology-storage-tool
     ports:
-      - "8080:8080"
+      - "9000:9000"
     volumes:
       # Persistent data (Excel uploads, edit history, settings)
       - ./data:/app/data
-      # Mount NAS volumes read-only for share scanning
-      # Add or remove volume entries to match your NAS layout
+      # NAS volumes for share scanning
       - /volume1:/volume1:ro
       # - /volume2:/volume2:ro
     environment:
-      - PORT=8080
+      - PORT=9000
       - HOST=0.0.0.0
       - DATA_DIR=/app/data
-      # Optionally override the default share path scanned:
-      # - SHARE_PATHS=/volume1,/volume2
+    # Required for btrfs subvolume/qgroup commands (accurate share sizes)
+    privileged: true
     restart: unless-stopped
-    # Run as a non-root user for better security
-    # user: "1000:1000"

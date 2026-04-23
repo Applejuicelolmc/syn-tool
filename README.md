@@ -31,20 +31,33 @@ Open `http://<NAS-IP>:9000` in your browser.
 
 ---
 
-## Option B — Docker (DSM 7.2+)
+## Option B — Docker / Container Manager (DSM 7.2+)
 
 **1. Install Git Server** via Synology Package Center.
 
 **2. Create the `tools` shared folder** (see step 2 above).
 
-**3. Clone and start:**
+**3. Clone the repo:**
 ```sh
 sudo git clone https://github.com/Applejuicelolmc/syn-tool.git /volume1/tools/syn-tool
+```
+
+**4a. Via SSH:**
+```sh
 cd /volume1/tools/syn-tool
 sudo docker-compose up -d
 ```
 
+**4b. Via Container Manager UI:**
+1. Open **Container Manager → Project → Create**
+2. Set project name (e.g. `synology-tool`)
+3. Set path to `/volume1/tools/syn-tool`
+4. Container Manager detects `docker-compose.yml` automatically
+5. Click **Next → Done** — it builds and starts the container
+
 Open `http://<NAS-IP>:9000` in your browser.
+
+> **Note:** The container runs with `privileged: true` — required for accurate share sizes via btrfs tools (same method DSM uses internally).
 
 ---
 
