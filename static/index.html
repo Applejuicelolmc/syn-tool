@@ -422,6 +422,7 @@ const LANG = {
     links_saved: 'Links saved!', links_failed: 'Save failed: ',
     restore_links_success: 'Links restored!', restore_links_failed: 'Restore failed: ',
     volume_info: 'Volume: {total} total, {free} free',
+    scanning: 'Scanning {done} of {total}…', scan_error: 'Scan error: ',
   },
   nl: {
     brand: 'Opslag\nBeheer',
@@ -463,6 +464,7 @@ const LANG = {
     links_saved: 'Koppelingen opgeslagen!', links_failed: 'Opslaan mislukt: ',
     restore_links_success: 'Koppelingen hersteld!', restore_links_failed: 'Herstel mislukt: ',
     volume_info: 'Volume: {total} totaal, {free} vrij',
+    scanning: '{done} van {total} scannen…', scan_error: 'Scan fout: ',
   },
 };
 
@@ -516,7 +518,7 @@ function reRenderCurrentTab() {
 
 // ===================== STATE =====================
 const S = {
-  shares: [], volumes: {},
+  shares: [], volumes: {}, scanStream: null,
   shareSort: { col: 'size_bytes', dir: 'desc' },
   excel:  { headers: [], rows: [], _meta: {} },
   editBuffer: [],
@@ -612,20 +614,81 @@ function showTab(tab) {
 }
 
 // ===================== DASHBOARD =====================
+function renderScanProgress(done, total, warnings) {
+  const cell = document.getElementById('scan-progress-cell');
+  if (!cell) return;
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+  const color = pct === 100 ? 'var(--success)' : 'var(--primary)';
+  cell.innerHTML = `<div style="padding:16px 12px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <span style="font-size:13px;color:var(--muted)">${t('scanning', {done, total: total || '…'})}</span>
+      <span style="font-size:12px;color:var(--muted)">${total ? pct + '%' : ''}</span>
+    </div>
+    <div class="bar-bg" style="height:8px">
+      <div class="bar-fill" style="width:${pct}%;background:${color};transition:width .25s"></div>
+    </div>
+    ${warnings.length ? `<div style="margin-top:8px;font-size:12px;color:var(--warning)">⚠ ${esc(warnings[warnings.length - 1])}</div>` : ''}
+  </div>`;
+}
+
 async function loadShares() {
-  document.getElementById('shares-body').innerHTML = `<tr><td colspan="5" class="empty-state">${t('loading')}</td></tr>`;
-  try {
-    const d = await GET('/api/shares');
-    S.shares  = d.shares;
-    S.volumes = d.volumes || {};
-    renderShares();
-    document.getElementById('shares-updated').textContent =
-      t('updated') + ': ' + new Date().toLocaleTimeString(lang === 'nl' ? 'nl-NL' : 'en-GB');
-    document.getElementById('sync-btn').disabled = !S.shares.length || !S.editBuffer.length;
-  } catch(e) {
-    document.getElementById('shares-body').innerHTML =
-      `<tr><td colspan="5" style="color:var(--danger);padding:16px">Error: ${esc(e.message)}</td></tr>`;
+  if (S.scanStream) { S.scanStream.close(); S.scanStream = null; }
+  S.shares = [];
+  document.getElementById('shares-body').innerHTML =
+    `<tr><td colspan="5" id="scan-progress-cell"></td></tr>`;
+  renderScanProgress(0, 0, []);
+
+  if (!window.EventSource) {
+    try {
+      const d = await GET('/api/shares');
+      S.shares = d.shares; S.volumes = d.volumes || {};
+      _onScanDone([]);
+    } catch(e) {
+      document.getElementById('shares-body').innerHTML =
+        `<tr><td colspan="5" style="color:var(--danger);padding:16px">Error: ${esc(e.message)}</td></tr>`;
+    }
+    return;
   }
+
+  const warnings = [];
+  const es = new EventSource('/api/shares/stream');
+  S.scanStream = es;
+
+  es.onmessage = ev => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'total') {
+      renderScanProgress(0, msg.count, warnings);
+    } else if (msg.type === 'share') {
+      S.shares.push(msg.share);
+      if (msg.warning) warnings.push(`${msg.share.name}: ${msg.warning}`);
+      renderScanProgress(msg.done, msg.total, warnings);
+    } else if (msg.type === 'error') {
+      warnings.push(msg.message);
+      renderScanProgress(S.shares.length, S.shares.length || 1, warnings);
+    } else if (msg.type === 'done') {
+      S.volumes = msg.volumes || {};
+      S.scanStream = null; es.close();
+      _onScanDone(warnings);
+    }
+  };
+
+  es.onerror = () => {
+    if (S.scanStream) { S.scanStream.close(); S.scanStream = null; }
+    if (!S.shares.length) {
+      document.getElementById('shares-body').innerHTML =
+        `<tr><td colspan="5" style="color:var(--danger);padding:16px">${t('scan_error')}Connection lost</td></tr>`;
+    } else {
+      _onScanDone(warnings);
+    }
+  };
+}
+
+function _onScanDone(warnings) {
+  renderShares();
+  warnings.forEach(w => toast(w, 'warning'));
+  document.getElementById('shares-updated').textContent =
+    t('updated') + ': ' + new Date().toLocaleTimeString(lang === 'nl' ? 'nl-NL' : 'en-GB');
+  document.getElementById('sync-btn').disabled = !S.shares.length || !S.editBuffer.length;
 }
 
 function sortSharesBy(col) {

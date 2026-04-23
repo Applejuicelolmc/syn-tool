@@ -10,14 +10,19 @@ Web dashboard for scanning NAS share sizes and managing customer billing Excel f
 - Python 3.9
 - Git Server
 
-**2. SSH into the NAS, clone the repo and run the installer:**
+**2. Create the `tools` shared folder** so it appears in File Station and has the correct permissions:
+
+1. Go to **DSM Control Panel → Shared Folder → Create**
+2. Name it `tools` — DSM will create `/volume1/tools`
+
+**3. SSH into the NAS, clone the repo and run the installer:**
 ```sh
 sudo git clone https://github.com/Applejuicelolmc/syn-tool.git /volume1/tools/syn-tool
 cd /volume1/tools/syn-tool
 sudo ./install.sh
 ```
 
-**3. Start:**
+**4. Start:**
 ```sh
 sudo ./start.sh
 ```
@@ -28,6 +33,11 @@ Open `http://<NAS-IP>:9000` in your browser.
 
 ## Option B — Docker (DSM 7.2+)
 
+**1. Install Git Server** via Synology Package Center.
+
+**2. Create the `tools` shared folder** (see step 2 above).
+
+**3. Clone and start:**
 ```sh
 sudo git clone https://github.com/Applejuicelolmc/syn-tool.git /volume1/tools/syn-tool
 cd /volume1/tools/syn-tool
@@ -42,21 +52,9 @@ Open `http://<NAS-IP>:9000` in your browser.
 
 ```sh
 cd /volume1/tools/syn-tool
-sudo git -c credential.helper= pull
+sudo git pull
 sudo ./start.sh
 ```
-
----
-
-## File Station visibility
-
-The tool folder needs to be registered as a Synology shared folder to appear in File Station. Do this **before** cloning:
-
-1. Go to **DSM Control Panel → Shared Folder → Create**
-2. Name it `tools` — DSM will create `/volume1/tools` with the correct permissions
-3. Then clone the repo into it via SSH as described above
-
-> If you already cloned first via SSH, you can still register it: same steps, but DSM will detect the existing folder and register it instead of creating a new one.
 
 ---
 

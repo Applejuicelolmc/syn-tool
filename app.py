@@ -14,7 +14,7 @@ import datetime
 import io
 from pathlib import Path
 from typing import Optional
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, Response
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
@@ -238,6 +238,84 @@ def api_shares():
 
     shares.sort(key=lambda x: x["size_bytes"], reverse=True)
     return jsonify({"shares": shares, "volumes": volumes})
+
+
+@app.route("/api/shares/stream")
+def api_shares_stream():
+    """SSE endpoint: streams each share result as it finishes scanning."""
+    cfg = load_config()
+
+    def generate():
+        shares_to_scan = []
+        volumes = {}
+
+        for base in cfg["share_paths"]:
+            if not os.path.isdir(base):
+                yield f'data: {json.dumps({"type":"error","message":f"Path not found: {base}"})}\n\n'
+                continue
+            try:
+                st = os.statvfs(base)
+                volumes[base] = {
+                    "total_bytes": st.f_blocks * st.f_frsize,
+                    "free_bytes":  st.f_bfree  * st.f_frsize,
+                    "used_bytes":  (st.f_blocks - st.f_bfree) * st.f_frsize,
+                    "total_human": human_size(st.f_blocks * st.f_frsize),
+                    "free_human":  human_size(st.f_bfree  * st.f_frsize),
+                }
+            except OSError:
+                pass
+            try:
+                with os.scandir(base) as it:
+                    for e in it:
+                        if not e.is_dir(follow_symlinks=False):
+                            continue
+                        n = e.name
+                        if n in cfg["exclude_shares"] or n.startswith(("@", "#")):
+                            continue
+                        shares_to_scan.append((base, e.path, n))
+            except PermissionError:
+                yield f'data: {json.dumps({"type":"error","message":f"Permission denied: {base}"})}\n\n'
+            except OSError as ex:
+                yield f'data: {json.dumps({"type":"error","message":str(ex)})}\n\n'
+
+        total = len(shares_to_scan)
+        yield f'data: {json.dumps({"type":"total","count":total})}\n\n'
+
+        for done, (base, path, name) in enumerate(shares_to_scan, 1):
+            warning = None
+            try:
+                r = subprocess.run(
+                    ["du", "-sb", path],
+                    capture_output=True, text=True, timeout=300
+                )
+                if r.returncode == 0:
+                    sb = int(r.stdout.split()[0])
+                else:
+                    sb = 0
+                    warning = (r.stderr.strip() or "Could not read size").split("\n")[0]
+            except subprocess.TimeoutExpired:
+                sb = 0
+                warning = "Scan timed out"
+            except Exception as ex:
+                sb = 0
+                warning = str(ex)
+
+            share = {
+                "name": name, "path": path, "base": base,
+                "size_bytes": sb, "size_gb": bytes_to_gb(sb), "size_human": human_size(sb),
+            }
+            msg: dict = {"type": "share", "share": share, "done": done, "total": total}
+            if warning:
+                msg["warning"] = warning
+            yield f'data: {json.dumps(msg)}\n\n'
+
+        yield f'data: {json.dumps({"type":"done","volumes":volumes})}\n\n'
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 # ---------------------------------------------------------------------------
 # Excel parsing / creation
