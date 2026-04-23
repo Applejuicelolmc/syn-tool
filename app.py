@@ -156,114 +156,74 @@ def compute_mapping_diff(headers: list, rows: list, mappings: dict) -> dict:
 # NAS share scanning
 # ---------------------------------------------------------------------------
 
-def _btrfs_all_sizes(base: str) -> dict:
-    """Return {full_path: size_bytes} for all direct-child subvolumes under base.
-    Uses exactly 2 commands for the whole volume — fast, dedup-correct, matches DSM.
+def _btrfs_sizes_for_paths(paths: list, base: str) -> dict:
+    """Return {path: size_bytes} for a list of share paths under base.
 
-    Prefers level-1 qgroups (1/<id>) which aggregate nested subvolumes — this is
-    what DSM uses and why it shows correct sizes for backup shares with nested data.
-    Falls back to level-0 (0/<id>) for shares without a level-1 qgroup.
-    Returns empty dict if btrfs is unavailable or qgroups are disabled."""
+    Step 1 — parallel btrfs subvolume show per path (path-based ioctl, works in Docker
+              bind mounts where btrfs subvolume list misses entries).
+    Step 2 — one btrfs qgroup show for the whole volume.
+    Step 3 — match via level-1 qgroups first (1/<id>, aggregates nested subvolumes,
+              matches DSM), then level-0 (0/<id>).
+
+    Total subprocess calls: len(paths) parallel + 1, all fast metadata reads."""
+    if not paths:
+        return {}
+
+    # Step 1: resolve subvolume ID for every share path in parallel
+    path_to_id: dict = {}
+    id_lock = threading.Lock()
+
+    def fetch_id(path):
+        try:
+            r = subprocess.run(
+                ["btrfs", "subvolume", "show", path],
+                capture_output=True, text=True, timeout=10
+            )
+            if r.returncode == 0:
+                for line in r.stdout.split('\n'):
+                    if 'Subvolume ID:' in line:
+                        with id_lock:
+                            path_to_id[path] = line.split()[-1].strip()
+                        break
+        except Exception:
+            pass
+
+    id_threads = [threading.Thread(target=fetch_id, args=(p,), daemon=True) for p in paths]
+    for t in id_threads:
+        t.start()
+    for t in id_threads:
+        t.join()
+
+    if not path_to_id:
+        return {}
+
+    # Step 2: one qgroup show for the whole volume
     try:
-        # Command 1: map subvolume ID → relative path for direct children only
-        rs = subprocess.run(
-            ["btrfs", "subvolume", "list", base],
-            capture_output=True, text=True, timeout=30
-        )
-        if rs.returncode != 0:
-            return {}
-
-        id_to_name: dict = {}
-        for line in rs.stdout.strip().split('\n'):
-            # Format: "ID 258 gen 123 top level 5 path ShareName"
-            parts = line.split()
-            if len(parts) >= 2 and parts[0] == 'ID':
-                try:
-                    path_idx = parts.index('path')
-                    relpath = ' '.join(parts[path_idx + 1:])
-                    if '/' not in relpath:   # direct children only
-                        id_to_name[parts[1]] = relpath
-                except (ValueError, IndexError):
-                    pass
-
-        if not id_to_name:
-            return {}
-
-        # Command 2: get all qgroup sizes in one shot
         rq = subprocess.run(
             ["btrfs", "qgroup", "show", "--raw", base],
             capture_output=True, text=True, timeout=30
         )
         if rq.returncode != 0:
             return {}
-
-        level0: dict = {}
-        level1: dict = {}
-        for line in rq.stdout.strip().split('\n'):
-            parts = line.split()
-            if len(parts) >= 2 and '/' in parts[0]:
-                qlevel, subvol_id = parts[0].split('/', 1)
-                if subvol_id in id_to_name:
-                    full_path = os.path.join(base, id_to_name[subvol_id])
-                    rfer = int(parts[1])
-                    if qlevel == '1':
-                        level1[full_path] = rfer   # aggregates nested subvolumes
-                    elif qlevel == '0':
-                        level0[full_path] = rfer   # top-level subvolume only
-
-        # level-1 overrides level-0 where both exist
-        return {**level0, **level1}
     except Exception:
         return {}
 
+    id_to_path = {sid: path for path, sid in path_to_id.items()}
+    level0: dict = {}
+    level1: dict = {}
+    for line in rq.stdout.split('\n'):
+        parts = line.split()
+        if len(parts) >= 2 and '/' in parts[0]:
+            qlevel, sid = parts[0].split('/', 1)
+            if sid in id_to_path:
+                p = id_to_path[sid]
+                rfer = int(parts[1])
+                if qlevel == '1':
+                    level1[p] = rfer   # includes nested subvolumes — matches DSM
+                elif qlevel == '0':
+                    level0[p] = rfer
 
-def _btrfs_single_size(path: str) -> Optional[int]:
-    """Per-share btrfs qgroup lookup via subvolume show + qgroup show.
-    Uses a different kernel ioctl than the bulk list — works where subvolume list
-    misses entries (e.g. Docker bind mounts).
-
-    Prefers level-1 qgroup (1/<id>) which aggregates nested subvolumes — required for
-    backup shares (Office365BackUp, ActiveBackupforBusiness, GsuiteBackup) whose actual
-    data lives in nested subvolumes. Falls back to level-0 (0/<id>)."""
-    try:
-        rs = subprocess.run(
-            ["btrfs", "subvolume", "show", path],
-            capture_output=True, text=True, timeout=10
-        )
-        if rs.returncode != 0:
-            return None
-        subvol_id = None
-        for line in rs.stdout.split('\n'):
-            if 'Subvolume ID:' in line:
-                subvol_id = line.split()[-1].strip()
-                break
-        if not subvol_id:
-            return None
-
-        rq = subprocess.run(
-            ["btrfs", "qgroup", "show", "--raw", path],
-            capture_output=True, text=True, timeout=30
-        )
-        if rq.returncode != 0:
-            return None
-
-        level0_bytes: Optional[int] = None
-        level1_bytes: Optional[int] = None
-        for line in rq.stdout.split('\n'):
-            parts = line.split()
-            if len(parts) >= 2:
-                if parts[0] == f'1/{subvol_id}':
-                    level1_bytes = int(parts[1])
-                elif parts[0] == f'0/{subvol_id}':
-                    level0_bytes = int(parts[1])
-
-        # level-1 aggregates nested subvolumes — prefer it (matches DSM)
-        if level1_bytes is not None:
-            return level1_bytes
-        return level0_bytes
-    except Exception:
-        pass
-    return None
+    return {**level0, **level1}   # level-1 wins where both exist
 
 
 def _du_size(path: str):
@@ -421,10 +381,11 @@ def api_shares_stream():
                 yield f'data: {json.dumps({"type":"done","volumes":volumes})}\n\n'
                 return
 
-            # Bulk-fetch btrfs qgroup sizes for all bases (2 commands per volume, not per share)
+            # Pre-fetch btrfs sizes: parallel subvol show per share + one qgroup show per base
             btrfs_sizes: dict = {}
             for base in set(b for b, p, n in shares_to_scan):
-                btrfs_sizes.update(_btrfs_all_sizes(base))
+                paths = [p for b2, p, n in shares_to_scan if b2 == base]
+                btrfs_sizes.update(_btrfs_sizes_for_paths(paths, base))
 
             result_q: queue.Queue = queue.Queue()
             lock = threading.Lock()
@@ -435,12 +396,8 @@ def api_shares_stream():
                 if path in btrfs_sizes:
                     sb, warning = btrfs_sizes[path], None
                 else:
-                    btrfs_b = _btrfs_single_size(path)
-                    if btrfs_b is not None:
-                        sb, warning = btrfs_b, None
-                    else:
-                        with sem:
-                            sb, warning = _du_size(path)
+                    with sem:
+                        sb, warning = _du_size(path)
                 share = {
                     "name": name, "path": path, "base": base,
                     "size_bytes": sb, "size_gb": bytes_to_gb(sb), "size_human": human_size(sb),
@@ -966,7 +923,8 @@ def _scan_and_cache_locked():
 
     btrfs_sizes: dict = {}
     for base in set(b for b, p, n in shares_to_scan):
-        btrfs_sizes.update(_btrfs_all_sizes(base))
+        paths = [p for b2, p, n in shares_to_scan if b2 == base]
+        btrfs_sizes.update(_btrfs_sizes_for_paths(paths, base))
 
     all_shares: list = []
     lock = threading.Lock()
@@ -976,12 +934,8 @@ def _scan_and_cache_locked():
         if path in btrfs_sizes:
             sb = btrfs_sizes[path]
         else:
-            btrfs_b = _btrfs_single_size(path)
-            if btrfs_b is not None:
-                sb = btrfs_b
-            else:
-                with sem:
-                    sb, _ = _du_size(path)
+            with sem:
+                sb, _ = _du_size(path)
         share = {
             "name": name, "path": path, "base": base,
             "size_bytes": sb, "size_gb": bytes_to_gb(sb), "size_human": human_size(sb),
