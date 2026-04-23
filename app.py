@@ -937,6 +937,4 @@ if __name__ == "__main__":
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     print(f"Synology Storage Tool  →  http://{host}:{port}")
     print(f"Data directory         →  {DATA_DIR.resolve()}")
-    # Pre-populate the share cache before the first browser visit
-    threading.Thread(target=_scan_and_cache, daemon=True).start()
     app.run(host=host, port=port, debug=debug, threaded=True)
