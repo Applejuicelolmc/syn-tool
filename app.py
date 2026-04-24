@@ -199,8 +199,11 @@ def _btrfs_sizes_for_paths(paths: list, base: str) -> dict:
 
     # Step 2: one qgroup show for the whole volume
     try:
+        # nsenter enters the host mount namespace (pid: host required in docker-compose)
+        # so btrfs can see the real btrfs quota tree, not the bind-mounted view
         rq = subprocess.run(
-            ["btrfs", "qgroup", "show", "--raw", base],
+            ["nsenter", "--target", "1", "--mount", "--",
+             "btrfs", "qgroup", "show", "--raw", base],
             capture_output=True, text=True, timeout=30
         )
         if rq.returncode != 0:

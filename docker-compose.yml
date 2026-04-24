@@ -18,4 +18,5 @@ services:
       - DATA_DIR=/app/data
     # Required for btrfs subvolume/qgroup commands (accurate share sizes)
     privileged: true
+    pid: host
     restart: unless-stopped
