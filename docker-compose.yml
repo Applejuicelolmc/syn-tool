@@ -12,9 +12,6 @@ services:
       # NAS volumes for share scanning
       - /volume1:/volume1:ro
       # - /volume2:/volume2:ro
-      # btrfs binary from host — avoids installing btrfs-progs during image build
-      # (Synology kernel doesn't support seccomp, which apt-get requires)
-      - /sbin/btrfs:/usr/sbin/btrfs:ro
     environment:
       - PORT=9000
       - HOST=0.0.0.0

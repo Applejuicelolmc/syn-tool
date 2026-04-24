@@ -6,6 +6,10 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
+# btrfs-progs: needed for accurate share sizes (built on GitHub Actions, not on NAS)
+RUN apt-get update && apt-get install -y --no-install-recommends btrfs-progs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first (layer caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
