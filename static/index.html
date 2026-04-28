@@ -39,6 +39,22 @@ input:focus,select:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgb
 .sidebar-footer { padding:12px 18px; border-top:1px solid rgba(255,255,255,.06); display:flex; align-items:center; gap:6px; }
 .lang-btn { background:transparent; color:var(--sidebar-text); border:1px solid rgba(255,255,255,.2); border-radius:4px; padding:3px 9px; font-size:12px; }
 .lang-btn.active { background:var(--sidebar-act); color:#fff; border-color:var(--sidebar-act); }
+.logout-btn { background:transparent; color:var(--sidebar-text); border:1px solid rgba(255,255,255,.2); border-radius:4px; padding:3px 9px; font-size:12px; margin-left:auto; }
+.logout-btn:hover { color:#f8fafc; border-color:rgba(255,255,255,.4); }
+
+/* ===================== LOGIN OVERLAY ===================== */
+#login-overlay { position:fixed; inset:0; background:var(--sidebar-bg); display:flex; align-items:center; justify-content:center; z-index:1000; }
+#login-overlay.hidden { display:none; }
+.login-card { background:#1e3a5f; border-radius:12px; padding:40px; width:340px; box-shadow:0 8px 32px rgba(0,0,0,.4); }
+.login-brand { display:flex; align-items:center; gap:12px; margin-bottom:32px; }
+.login-brand svg { width:32px; height:32px; color:#3b82f6; }
+.login-brand span { color:#f8fafc; font-size:20px; font-weight:700; }
+.login-card label { display:block; color:#94a3b8; font-size:12px; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; margin-top:16px; }
+.login-card input { width:100%; background:#0f2744; border:1px solid rgba(255,255,255,.15); color:#f8fafc; border-radius:6px; padding:9px 12px; font-size:14px; }
+.login-card input:focus { border-color:#3b82f6; outline:none; box-shadow:0 0 0 3px rgba(59,130,246,.2); }
+.login-submit { margin-top:24px; width:100%; background:#3b82f6; color:#fff; border:none; border-radius:6px; padding:10px; font-size:14px; font-weight:600; cursor:pointer; }
+.login-submit:hover { background:#2563eb; }
+.login-error { color:#f87171; font-size:13px; margin-top:12px; min-height:18px; text-align:center; }
 
 /* ---- MAIN ---- */
 .main { flex:1; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); }
@@ -213,6 +229,7 @@ tbody td { padding:8px 12px; vertical-align:middle; overflow:hidden; }
     <div class="sidebar-footer">
       <button class="lang-btn" id="btn-en" onclick="setLang('en')">EN</button>
       <button class="lang-btn" id="btn-nl" onclick="setLang('nl')">NL</button>
+      <button class="logout-btn" id="logout-btn" onclick="doLogout()" style="display:none" title="Logout">↩</button>
     </div>
   </aside>
 
@@ -344,6 +361,17 @@ tbody td { padding:8px 12px; vertical-align:middle; overflow:hidden; }
               </select>
             </div>
           </div>
+          <div class="settings-section">
+            <h3>Login</h3>
+            <div class="form-row">
+              <label class="form-label">Username</label>
+              <input type="text" id="auth-username" style="width:180px" autocomplete="off">
+            </div>
+            <div class="form-row">
+              <label class="form-label">Password</label>
+              <input type="password" id="auth-password" style="width:180px" autocomplete="new-password" placeholder="Leave blank to keep current">
+            </div>
+          </div>
           <button class="btn-primary" onclick="saveSettings()" data-i18n="save_settings"></button>
         </div></div>
       </div>
@@ -374,6 +402,22 @@ tbody td { padding:8px 12px; vertical-align:middle; overflow:hidden; }
       <button class="btn-secondary" onclick="closeMappingModal()" data-i18n="skip"></button>
       <button class="btn-primary"   onclick="saveMappingDecision()" data-i18n="save_links"></button>
     </div>
+  </div>
+</div>
+
+<!-- LOGIN OVERLAY -->
+<div id="login-overlay" class="hidden">
+  <div class="login-card">
+    <div class="login-brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+      <span>Storage Manager</span>
+    </div>
+    <label>Username</label>
+    <input type="text" id="login-username" autocomplete="username">
+    <label>Password</label>
+    <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-submit" onclick="doLogin()">Login</button>
+    <div class="login-error" id="login-error"></div>
   </div>
 </div>
 
@@ -588,14 +632,52 @@ function showConfirm(title, msg, onOk) {
 }
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 
+// ===================== AUTH =====================
+function showLogin() {
+  document.getElementById('login-overlay').classList.remove('hidden');
+  document.getElementById('login-error').textContent = '';
+  document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
+  setTimeout(() => document.getElementById('login-username').focus(), 50);
+}
+function hideLogin() {
+  document.getElementById('login-overlay').classList.add('hidden');
+  document.getElementById('logout-btn').style.display = '';
+}
+async function checkAuth() {
+  const s = await fetch('/api/auth/status').then(r => r.json()).catch(() => ({authenticated: false}));
+  if (s.authenticated) { hideLogin(); return true; }
+  showLogin(); return false;
+}
+async function doLogin() {
+  const username = document.getElementById('login-username').value;
+  const password = document.getElementById('login-password').value;
+  const r = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username, password}) });
+  if (r.ok) {
+    hideLogin();
+    GET('/api/mappings').then(d => { S.mappings = d; }).catch(() => {});
+    loadShares();
+  } else {
+    document.getElementById('login-error').textContent = 'Invalid username or password';
+    document.getElementById('login-password').value = '';
+  }
+}
+async function doLogout() {
+  await fetch('/api/auth/logout', { method:'POST' });
+  document.getElementById('logout-btn').style.display = 'none';
+  showLogin();
+}
+
 // ===================== API =====================
 async function GET(url) {
   const r = await fetch(url);
+  if (r.status === 401) { showLogin(); throw new Error('Unauthorized'); }
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
 async function POST(url, data) {
   const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+  if (r.status === 401) { showLogin(); throw new Error('Unauthorized'); }
   if (!r.ok) { const e = await r.json().catch(()=>({error:'Unknown error'})); throw new Error(e.error || `HTTP ${r.status}`); }
   return r.json();
 }
@@ -1308,6 +1390,8 @@ function renderSettings() {
     }
   });
   document.getElementById('mailbox-gb').value = cfg.mailbox_gb ?? 10;
+  document.getElementById('auth-username').value = cfg.auth_username || 'admin';
+  document.getElementById('auth-password').value = '';
 }
 
 function addSharePath() {
@@ -1329,13 +1413,17 @@ function removeExclude(i) { S.settings.exclude_shares.splice(i,1); renderSetting
 
 async function saveSettings() {
   try {
-    const res = await POST('/api/settings', {
+    const pw = document.getElementById('auth-password').value;
+    const body = {
       share_paths:      S.settings.share_paths,
       exclude_shares:   S.settings.exclude_shares,
       upload_retention: parseInt(document.getElementById('upload-retention').value),
       edit_retention:   parseInt(document.getElementById('edit-retention').value),
       mailbox_gb:       parseFloat(document.getElementById('mailbox-gb').value) || 10,
-    });
+      auth_username:    document.getElementById('auth-username').value,
+    };
+    if (pw) body.auth_password = pw;
+    const res = await POST('/api/settings', body);
     S.settings = res.config;
     renderSettings();
     toast(t('settings_saved'), 'success');
@@ -1343,9 +1431,9 @@ async function saveSettings() {
 }
 
 // ===================== INIT =====================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   lang = getLangFromEnv();
-  setLang(lang); // applies i18n + marks active button
+  setLang(lang);
 
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', () => showTab(el.dataset.tab));
@@ -1360,8 +1448,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (S.dirty) { e.preventDefault(); e.returnValue = ''; }
   });
 
-  GET('/api/mappings').then(d => { S.mappings = d; }).catch(() => {});
-  loadShares();
+  const authed = await checkAuth();
+  if (authed) {
+    GET('/api/mappings').then(d => { S.mappings = d; }).catch(() => {});
+    loadShares();
+  }
 });
 </script>
 </body>

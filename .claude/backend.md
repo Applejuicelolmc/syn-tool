@@ -4,8 +4,9 @@
 ```
 data/
   current.json          — active Excel data { headers, rows, _meta }
-  config.json           — user settings
+  config.json           — user settings (includes auth credentials)
   mappings.json         — customer→share mappings (persisted across uploads)
+  .secret_key           — Flask session secret key (auto-generated on first run)
   uploads/              — raw uploaded .xlsx/.xls files
   edits/                — JSON snapshots of current.json taken before each save
   mappings_history/     — JSON snapshots of mappings.json taken before each change
@@ -19,87 +20,90 @@ DEFAULT_CONFIG = {
     "upload_retention": 10,
     "edit_retention":   10,
     "mailbox_gb":       10,   # GB free per mailbox in billing formula
+    "auth_enabled":     True,
+    "auth_username":    "admin",
+    "auth_password":    "admin",
 }
 ```
+
+## Auth
+
+Session-based auth via Flask sessions. Secret key auto-generated and stored in `data/.secret_key`.
+Sessions are permanent (30 days).
+
+`@app.before_request` blocks all `/api/*` routes (except `/api/auth/*`) with 401 if not authenticated.
+
+### Auth routes
+- `GET /api/auth/status` — `{ authenticated, auth_enabled }` — always public
+- `POST /api/auth/login` — body: `{ username, password }` → sets session
+- `POST /api/auth/logout` — clears session
 
 ## API Routes
 
 ### `GET /api/shares`
 Returns `{ shares: [...], volumes: {...} }`.
-- Scans each path in `share_paths`; skips names in `exclude_shares` and names starting with `@`/`#`
-- Each share: `{ name, path, base, size_bytes, size_gb, size_human }`
-  - `base` = volume root (e.g. `/volume1`) — used by frontend to look up volume stats
-- Volumes keyed by base path: `{ total_bytes, free_bytes, used_bytes, total_human, free_human }`
-- Uses `os.statvfs()` for volume-level disk stats; `du -sb <path>` for share size (fallback: recursive scandir)
+Scans each path in `share_paths`; skips names in `exclude_shares` and names starting with `@`/`#`.
+Each share: `{ name, path, base, size_bytes, size_gb, size_human }`.
+Volumes keyed by base path: `{ total_bytes, free_bytes, used_bytes, total_human, free_human }`.
+
+### `GET /api/shares/stream`
+SSE endpoint. Events: `discovered` (all share names upfront), `share` (one per share as scanned), `busy`, `done`, `error`.
+
+### `GET /api/shares/cached`
+Returns last scan result from `shares_cache.json`.
 
 ### `GET /api/excel/current`
 Returns `current.json` or empty `{ headers:[], rows:[], _meta:{} }`.
 
 ### `POST /api/excel/upload`
-- Multipart `file` field (.xlsx or .xls)
-- Saves raw file to `uploads/`, parses, applies stored mappings, writes `current.json`
-- Returns `{ success, data, mapping_diff }` — `mapping_diff.has_diff` triggers diff modal in frontend
-- Applies retention to uploads/ and edits/
+Multipart `file` field (.xlsx or .xls). Saves raw file to `uploads/`, parses, applies stored mappings, writes `current.json`.
+Returns `{ success, data, mapping_diff }` — `mapping_diff.has_diff` triggers diff modal in frontend.
 
 ### `POST /api/excel/save`
-- Body: `{ headers, rows, _meta, ... }`
-- Snapshots current.json to edits/ first, then overwrites
-- Applies edit retention
+Body: `{ headers, rows, _meta, ... }`. Snapshots current.json to edits/ first, then overwrites.
 
 ### `GET /api/excel/export`
-- Builds .xlsx via `build_excel()`, returns as download
-- Re-inserts billing formula: `=G{ri}-({mailbox_gb}*E{ri})` (column letters auto-detected by keyword)
-- Filename: `opslag_YYYYMMDD_HHMMSS.xlsx`
+Builds .xlsx via `build_excel()`, returns as download. Re-inserts billing formula.
+Filename: `opslag_YYYYMMDD_HHMMSS.xlsx`
 
 ### `GET /api/history`
 Returns `{ uploads:[...], edits:[...] }` sorted by mtime descending.
 
-### `POST /api/history/restore/upload/<id>`
-Re-parses raw upload file → writes current.json.
+### `POST /api/history/restore/upload/<id>` / `POST /api/history/restore/edit/<id>`
+Restores from upload or edit snapshot.
 
-### `POST /api/history/restore/edit/<id>`
-Restores edits/ snapshot → current.json.
+### `GET /api/mappings` / `POST /api/mappings/save`
+GET returns `mappings.json`. POST body: `{ key_col, updates, remove }`.
 
-### `GET /api/mappings`
-Returns `mappings.json`: `{ key_col, map: { lowercase_customer_name: { share, name }, ... } }`.
-
-### `POST /api/mappings/save`
-Body: `{ key_col, updates: [{key, name, share}], remove: [key,...] }`.
-Keys are always lowercased. Updates merge; remove deletes entries.
-
-### `GET /api/mappings/history`
-Returns `{ snapshots:[...] }` from mappings_history/.
-
-### `POST /api/mappings/restore/<snap_id>`
-Restores a mappings snapshot (snapshots current first).
+### `GET /api/mappings/history` / `POST /api/mappings/restore/<snap_id>`
+Mappings version history and restore.
 
 ### `GET /api/settings` / `POST /api/settings`
-GET returns full config. POST validates, saves, applies retention immediately.
-Accepted POST fields: `share_paths` (list), `exclude_shares` (list), `upload_retention` (int 1–100), `edit_retention` (int 1–100), `mailbox_gb` (float ≥ 0).
+GET returns full config. POST accepted fields: `share_paths`, `exclude_shares`, `upload_retention`, `edit_retention`, `mailbox_gb`, `auth_enabled`, `auth_username`, `auth_password`.
+
+## Share size measurement
+
+### `_btrfs_sizes_for_paths(paths, base)`
+1. Runs `btrfs subvolume show PATH` in parallel for each share → gets subvolume IDs
+2. Runs `nsenter --target 1 --mount -- btrfs qgroup show --raw base` (enters host mount namespace so quota data is accessible from Docker)
+3. Parses qgroup output: level-0 = per-subvolume, level-1 = aggregate including nested subvolumes
+4. Returns `{**level0, **level1}` — level-1 wins (larger, includes all nested subvolume data; more useful for billing)
+5. Falls back to `_du_size` for any path not found via btrfs
+
+**Why nsenter:** Docker bind-mounted `/volume1` sees "quotas not enabled" from `btrfs qgroup show`. nsenter enters the host's mount namespace (PID 1 via `pid: host`) where quotas ARE enabled.
+
+**Why level-1 wins:** level-1 qgroup aggregates ALL nested subvolumes (e.g. Office365BackUp, GsuiteBackup store data in nested subvolumes). Level-1 gives total referenced data — more meaningful for billing than physical dedup-aware size.
 
 ## Key functions
 
 ### `detect_key_col(headers)`
-Prefers customer name over contract number:
-```python
-return _find_col(headers, "klant","naam","customer","name") or _find_col(headers, "contract")
-```
+Prefers customer name over contract number.
 
 ### `compute_mapping_diff(headers, rows, mappings)`
-Matches rows to stored mappings by `display_name.lower()`. Mutates rows in-place (`row['_share']`).
-Returns `{ key_col, applied, new, removed, changed, has_diff }`.
+Matches rows to stored mappings by `display_name.lower()`. Returns `{ key_col, applied, new, removed, changed, has_diff }`.
 
 ### `build_excel(data, cfg)`
-Reconstructs .xlsx from JSON. Detects columns by keyword match:
-- mailbox: `"mailbox"`
-- gebruikte: `"gebruik"`, `"used storage"`
-- factureren: `"factuur"`, `"factureren"`, `"invoice"`
-
-Re-inserts formula using detected column letters and `mailbox_gb` config value.
+Reconstructs .xlsx. Re-inserts billing formula: `=G{ri}-({mailbox_gb}*E{ri})`.
 
 ### Retention
 `_apply_retention(directory, pattern, keep)` — sorts by mtime, deletes files beyond `keep`.
-
-### Snapshots
-`_snapshot_current()` — saves current.json to edits/ before overwriting.
-`_snapshot_mappings()` — saves mappings.json to mappings_history/ before overwriting.

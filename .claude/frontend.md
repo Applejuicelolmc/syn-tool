@@ -112,6 +112,30 @@ Three sub-tabs: Uploads / Edits / Links (mappings).
 ## Settings tab
 `loadSettings()` / `renderSettings()` / `saveSettings()`.
 Fields: share_paths (list), exclude_shares (list), mailbox_gb (number), upload/edit retention (select 5/10/20/50).
+Auth section: `auth-username` text input + `auth-password` password input (blank = keep existing).
+`saveSettings()` includes `auth_username` always; `auth_password` only if non-empty.
+
+## Auth / Login
+
+### Login overlay
+Full-page dark overlay (`#login-overlay`, class `login-overlay`, hidden by default):
+```html
+<div id="login-overlay" class="hidden">
+  <div class="login-card">
+    <!-- brand, username input, password input (onkeydown Enter → doLogin), login button, error div -->
+  </div>
+</div>
+```
+Logout button (`↩`) in sidebar footer with `id="logout-btn"` calls `doLogout()`.
+
+### Auth functions
+- `checkAuth()` — GETs `/api/auth/status`. If `auth_enabled && !authenticated`: shows login overlay, stops init. Otherwise hides overlay, shows logout btn if auth_enabled, proceeds with `loadShares()` etc.
+- `showLogin()` / `hideLogin()` — toggles `hidden` class on `#login-overlay`
+- `doLogin()` — POSTs `{ username, password }` to `/api/auth/login`. On success: `hideLogin()`, `loadShares()` etc. On fail: shows error in `#login-error`.
+- `doLogout()` — POSTs to `/api/auth/logout`, then `checkAuth()`.
+
+### 401 handling in GET/POST helpers
+`GET()` and `POST()` both call `showLogin()` on HTTP 401 response instead of propagating the error.
 
 ## Utility functions
 - `esc(s)` — HTML escape
@@ -133,6 +157,8 @@ Fields: share_paths (list), exclude_shares (list), mailbox_gb (number), upload/e
 lang = getLangFromEnv();
 setLang(lang);
 // wire nav click handlers, modal click-outside, beforeunload dirty warning
+await checkAuth();  // shows login overlay and stops if not authenticated
 GET('/api/mappings').then(d => { S.mappings = d; }).catch(() => {});
 loadShares();
 ```
+DOMContentLoaded handler is `async` to allow `await checkAuth()`.

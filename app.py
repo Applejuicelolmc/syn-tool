@@ -16,12 +16,15 @@ import threading
 import queue
 from pathlib import Path
 from typing import Optional
-from flask import Flask, request, jsonify, send_file, send_from_directory, Response
+import secrets
+from datetime import timedelta
+from flask import Flask, request, jsonify, send_file, send_from_directory, Response, session
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 app = Flask(__name__, static_folder="static")
+app.permanent_session_lifetime = timedelta(days=30)
 
 # ---------------------------------------------------------------------------
 # Paths & defaults
@@ -43,6 +46,9 @@ DEFAULT_CONFIG = {
     "upload_retention":  10,
     "edit_retention":    10,
     "mailbox_gb":        10,    # GB included per mailbox (Te factureren = Gebruikte - mailbox_gb * Mailboxen)
+    "auth_enabled":      True,
+    "auth_username":     "admin",
+    "auth_password":     "admin",
 }
 
 # ---------------------------------------------------------------------------
@@ -52,6 +58,10 @@ DEFAULT_CONFIG = {
 def ensure_dirs():
     for d in [DATA_DIR, UPLOADS_DIR, EDITS_DIR, MAPPINGS_DIR]:
         d.mkdir(parents=True, exist_ok=True)
+    key_file = DATA_DIR / ".secret_key"
+    if not key_file.exists():
+        key_file.write_text(secrets.token_hex(32))
+    app.secret_key = key_file.read_text().strip()
 
 
 def load_config() -> dict:
@@ -67,6 +77,54 @@ def load_config() -> dict:
 def save_config(cfg: dict):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+@app.before_request
+def check_auth():
+    if not request.path.startswith('/api/'):
+        return
+    if request.path.startswith('/api/auth/'):
+        return
+    cfg = load_config()
+    if not cfg.get('auth_enabled', True):
+        return
+    if not session.get('authenticated'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+
+@app.route('/api/auth/status')
+def auth_status():
+    cfg = load_config()
+    enabled = cfg.get('auth_enabled', True)
+    return jsonify({
+        'authenticated': not enabled or bool(session.get('authenticated')),
+        'auth_enabled': enabled,
+    })
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    cfg = load_config()
+    if not cfg.get('auth_enabled', True):
+        return jsonify({'ok': True})
+    data = request.get_json() or {}
+    if (data.get('username') == cfg.get('auth_username', 'admin') and
+            data.get('password') == cfg.get('auth_password', 'admin')):
+        session.permanent = True
+        session['authenticated'] = True
+        return jsonify({'ok': True})
+    return jsonify({'error': 'Invalid credentials'}), 401
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def auth_logout():
+    session.clear()
+    return jsonify({'ok': True})
+
 
 # ---------------------------------------------------------------------------
 # Customer → share mappings
@@ -226,15 +284,9 @@ def _btrfs_sizes_for_paths(paths: list, base: str) -> dict:
                 elif qlevel == '0':
                     level0[p] = rfer
 
-    # level-0 wins when non-zero (e.g. ActiveBackupforBusiness: l0=154GB, l1=585GB inflated)
-    # level-1 used only when level-0 is zero (e.g. Office365BackUp: data in nested subvolumes)
-    result: dict = {}
-    for path in set(list(level0.keys()) + list(level1.keys())):
-        if level0.get(path, 0) > 0:
-            result[path] = level0[path]
-        elif path in level1:
-            result[path] = level1[path]
-    return result
+    # level-1 wins: shows total referenced data including nested subvolumes
+    # (larger numbers, more meaningful for billing — matches employer expectation)
+    return {**level0, **level1}
 
 
 def _du_size(path: str):
@@ -879,6 +931,13 @@ def api_settings_post():
         val = float(body["mailbox_gb"])
         if val >= 0:
             cfg["mailbox_gb"] = val
+
+    if "auth_enabled" in body:
+        cfg["auth_enabled"] = bool(body["auth_enabled"])
+    if "auth_username" in body and str(body["auth_username"]).strip():
+        cfg["auth_username"] = str(body["auth_username"]).strip()
+    if "auth_password" in body and str(body["auth_password"]).strip():
+        cfg["auth_password"] = str(body["auth_password"]).strip()
 
     save_config(cfg)
     _apply_retention(UPLOADS_DIR, "*.xlsx", cfg["upload_retention"])
