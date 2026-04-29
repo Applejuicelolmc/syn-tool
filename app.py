@@ -32,6 +32,8 @@ app.permanent_session_lifetime = timedelta(days=30)
 # ---------------------------------------------------------------------------
 
 DATA_DIR         = Path(os.environ.get("DATA_DIR", "./data"))
+_branding_env    = os.environ.get("BRANDING_DIR", "")
+BRANDING_DIR     = Path(_branding_env) if _branding_env else None
 UPLOADS_DIR      = DATA_DIR / "uploads"
 EDITS_DIR        = DATA_DIR / "edits"
 MAPPINGS_DIR     = DATA_DIR / "mappings_history"
@@ -349,26 +351,6 @@ def _du_size(path: str, apparent: bool = False):
         return 0, str(ex)
 
 
-def dir_size_bytes(path: str) -> int:
-    sb, _ = _du_size(path)
-    if sb:
-        return sb
-    total = 0
-    try:
-        with os.scandir(path) as it:
-            for e in it:
-                try:
-                    if e.is_file(follow_symlinks=False):
-                        total += e.stat(follow_symlinks=False).st_size
-                    elif e.is_dir(follow_symlinks=False):
-                        total += dir_size_bytes(e.path)
-                except OSError:
-                    pass
-    except OSError:
-        pass
-    return total
-
-
 def bytes_to_gb(b: int) -> float:
     return round(b / (1024 ** 3), 2)
 
@@ -379,54 +361,6 @@ def human_size(b: int) -> str:
             return f"{b:.1f} {unit}"
         b /= 1024
     return f"{b:.1f} PB"
-
-
-@app.route("/api/shares")
-def api_shares():
-    cfg = load_config()
-    shares  = []
-    volumes = {}
-
-    for base in cfg["share_paths"]:
-        if not os.path.isdir(base):
-            continue
-        # Volume-level stats (total / free disk space)
-        try:
-            st = os.statvfs(base)
-            volumes[base] = {
-                "total_bytes": st.f_blocks * st.f_frsize,
-                "free_bytes":  st.f_bfree  * st.f_frsize,
-                "used_bytes":  (st.f_blocks - st.f_bfree) * st.f_frsize,
-                "total_human": human_size(st.f_blocks * st.f_frsize),
-                "free_human":  human_size(st.f_bfree  * st.f_frsize),
-            }
-        except OSError:
-            pass
-        # Individual share sizes
-        try:
-            with os.scandir(base) as it:
-                for e in it:
-                    if not e.is_dir(follow_symlinks=False):
-                        continue
-                    n = e.name
-                    if n in cfg["exclude_shares"]:
-                        continue
-                    if n.startswith(("@", "#")):
-                        continue
-                    sb = dir_size_bytes(e.path)
-                    shares.append({
-                        "name":       n,
-                        "path":       e.path,
-                        "base":       base,
-                        "size_bytes": sb,
-                        "size_gb":    bytes_to_gb(sb),
-                        "size_human": human_size(sb),
-                    })
-        except OSError:
-            pass
-
-    shares.sort(key=lambda x: x["size_bytes"], reverse=True)
-    return jsonify({"shares": shares, "volumes": volumes})
 
 
 @app.route("/api/shares/stream")
@@ -744,7 +678,26 @@ def _apply_retention(directory: Path, pattern: str, keep: int):
 
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
+    return send_from_directory("static/html", "index.html")
+
+
+@app.route("/login")
+def login_page():
+    return send_from_directory("static/html", "login.html")
+
+
+@app.route("/static/branding/<path:filename>")
+def branding_asset(filename: str):
+    if BRANDING_DIR and (BRANDING_DIR / filename).is_file():
+        return send_from_directory(str(BRANDING_DIR), filename)
+    return send_from_directory("static/assets", filename)
+
+
+@app.route("/favicon.ico")
+def favicon():
+    if BRANDING_DIR and (BRANDING_DIR / "favicon.ico").is_file():
+        return send_from_directory(str(BRANDING_DIR), "favicon.ico")
+    return send_from_directory("static/assets", "favicon.ico")
 
 
 @app.route("/api/excel/current")
@@ -1033,109 +986,6 @@ def api_settings_post():
     _apply_retention(EDITS_DIR,   "*.json", cfg["edit_retention"])
     cfg.pop('auth_password', None)
     return jsonify({"success": True, "config": cfg})
-
-# ---------------------------------------------------------------------------
-# Background scan
-# ---------------------------------------------------------------------------
-
-def _scan_and_cache():
-    """Scan all shares in parallel and write shares_cache.json. Skips if a scan is already running."""
-    if not _scan_lock.acquire(blocking=False):
-        return  # SSE or another background scan already holds the lock
-    try:
-        _scan_and_cache_locked()
-    finally:
-        _scan_lock.release()
-
-
-def _scan_and_cache_locked():
-    ensure_dirs()
-    cfg = load_config()
-    shares_to_scan = []
-    volumes = {}
-
-    for base in cfg["share_paths"]:
-        if not os.path.isdir(base):
-            continue
-        try:
-            st = os.statvfs(base)
-            volumes[base] = {
-                "total_bytes": st.f_blocks * st.f_frsize,
-                "free_bytes":  st.f_bfree  * st.f_frsize,
-                "used_bytes":  (st.f_blocks - st.f_bfree) * st.f_frsize,
-                "total_human": human_size(st.f_blocks * st.f_frsize),
-                "free_human":  human_size(st.f_bfree  * st.f_frsize),
-            }
-        except OSError:
-            pass
-        try:
-            with os.scandir(base) as it:
-                for e in it:
-                    if not e.is_dir(follow_symlinks=False):
-                        continue
-                    n = e.name
-                    if n in cfg["exclude_shares"] or n.startswith(("@", "#")):
-                        continue
-                    shares_to_scan.append((base, e.path, n))
-        except OSError:
-            pass
-
-    apparent_cache = load_apparent_cache()
-    apparent_lock  = threading.Lock()
-
-    btrfs_sizes: dict = {}
-    du_needed: set = set()
-    for base in set(b for b, p, n in shares_to_scan):
-        paths = [p for b2, p, n in shares_to_scan if b2 == base]
-        sz, dn = _btrfs_sizes_for_paths(paths, base)
-        btrfs_sizes.update(sz)
-        du_needed.update(dn)
-
-    all_shares: list = []
-    lock = threading.Lock()
-    sem = threading.Semaphore(4)
-
-    def scan_one(base, path, name):
-        if path in btrfs_sizes and path not in du_needed:
-            sb = btrfs_sizes[path]
-        else:
-            with sem:
-                sb, _ = _du_size(path, apparent=(path in du_needed))
-            with apparent_lock:
-                cached_val = apparent_cache.get(path, 0)
-                sb = max(sb, cached_val)
-                apparent_cache[path] = sb
-                save_apparent_cache(apparent_cache)
-            if not sb and path in btrfs_sizes:
-                sb = btrfs_sizes[path]
-        share = {
-            "name": name, "path": path, "base": base,
-            "size_bytes": sb, "size_gb": bytes_to_gb(sb), "size_human": human_size(sb),
-        }
-        with lock:
-            all_shares.append(share)
-
-    threads = [
-        threading.Thread(target=scan_one, args=(b, p, n), daemon=True)
-        for b, p, n in shares_to_scan
-    ]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    all_shares.sort(key=lambda x: x["size_bytes"], reverse=True)
-    try:
-        cache = {
-            "shares":     all_shares,
-            "volumes":    volumes,
-            "scanned_at": datetime.datetime.now().isoformat(),
-        }
-        with open(DATA_DIR / "shares_cache.json", "w") as f:
-            json.dump(cache, f, default=str)
-    except Exception:
-        pass
-
 
 # ---------------------------------------------------------------------------
 # Entry point

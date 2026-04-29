@@ -12,10 +12,14 @@ services:
       # NAS volumes for share scanning
       - /volume1:/volume1:ro
       # - /volume2:/volume2:ro
+      # Optional: custom branding (logo.png, favicon.ico)
+      # - ./branding:/app/branding:ro
     environment:
       - PORT=9000
       - HOST=0.0.0.0
       - DATA_DIR=/app/data
+      # Optional: set to /app/branding if the volume above is uncommented
+      # - BRANDING_DIR=/app/branding
     privileged: true
     pid: host
     restart: unless-stopped

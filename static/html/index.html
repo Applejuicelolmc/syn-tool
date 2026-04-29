@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storage Manager</title>
+<link rel="icon" type="image/x-icon" href="/static/branding/favicon.ico">
+<link rel="stylesheet" href="/static/css/index.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <header class="sidebar-brand">
+      <span class="brand-icon">
+        <img src="/static/branding/logo.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" style="display:none">
+          <rect x="2" y="3" width="20" height="5" rx="1"/><rect x="2" y="10" width="20" height="5" rx="1"/>
+          <rect x="2" y="17" width="20" height="5" rx="1"/>
+          <circle cx="18" cy="5.5" r="1" fill="#3b82f6" stroke="none"/>
+          <circle cx="18" cy="12.5" r="1" fill="#3b82f6" stroke="none"/>
+        </svg>
+      </span>
+      <span data-i18n="brand"></span>
+    </header>
+    <ul class="nav-list">
+      <li class="nav-item active" data-tab="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span data-i18n="nav_dashboard"></span>
+      </li>
+      <li class="nav-item" data-tab="excel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span data-i18n="nav_excel"></span>
+      </li>
+      <li class="nav-item" data-tab="history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 108.83-7A9 9 0 003 11"/><polyline points="3 4 3 11 10 11"/></svg>
+        <span data-i18n="nav_history"></span>
+      </li>
+      <li class="nav-item" data-tab="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span data-i18n="nav_settings"></span>
+      </li>
+    </ul>
+    <footer class="sidebar-footer">
+      <button class="lang-btn" id="btn-en" onclick="setLanguage('en')">EN</button>
+      <button class="lang-btn" id="btn-nl" onclick="setLanguage('nl')">NL</button>
+      <button class="logout-btn" id="logout-btn" onclick="doLogout()" style="display:none" title="Logout">↩</button>
+    </footer>
+  </aside>
+
+  <main class="main">
+    <header class="main-header">
+      <h1 id="page-title"></h1>
+      <nav class="header-actions" id="header-actions"></nav>
+    </header>
+    <section class="content-area">
+
+      <!-- ========== DASHBOARD ========== -->
+      <section id="tab-dashboard" class="tab-content active">
+        <section class="stats-grid">
+          <article class="stat-card"><p class="stat-label" data-i18n="stat_total"></p><p class="stat-value" id="stat-total">—</p><small class="stat-sub" id="stat-total-sub"></small></article>
+          <article class="stat-card"><p class="stat-label" data-i18n="stat_count"></p><p class="stat-value" id="stat-count">—</p></article>
+          <article class="stat-card"><p class="stat-label" data-i18n="stat_largest"></p><p class="stat-value" id="stat-largest">—</p><small class="stat-sub" id="stat-largest-name"></small></article>
+          <article class="stat-card"><p class="stat-label" data-i18n="stat_excel_rows"></p><p class="stat-value" id="stat-excel-rows">—</p></article>
+        </section>
+        <section class="card">
+          <header class="card-header">
+            <h2 class="card-title" data-i18n="nas_shares"></h2>
+            <span style="display:flex;gap:8px;align-items:center">
+              <span id="shares-updated" style="font-size:12px;color:var(--muted)"></span>
+              <button class="btn-secondary btn-sm" onclick="loadShares()" data-i18n="refresh"></button>
+            </span>
+          </header>
+          <section class="card-body" style="padding:0">
+            <section class="table-wrap">
+              <table id="shares-table">
+                <thead><tr>
+                  <th onclick="sortSharesByColumn('name')"       style="width:160px"><span class="th-inner"><span class="th-text" data-i18n="col_name"></span><span class="sort-icon">↕</span></span></th>
+                  <th onclick="sortSharesByColumn('path')"       style="width:200px"><span class="th-inner"><span class="th-text" data-i18n="col_path"></span><span class="sort-icon">↕</span></span></th>
+                  <th onclick="sortSharesByColumn('size_bytes')" style="width:100px"><span class="th-inner"><span class="th-text" data-i18n="col_size"></span><span class="sort-icon">↕</span></span></th>
+                  <th onclick="sortSharesByColumn('size_gb')"    style="width:90px" ><span class="th-inner"><span class="th-text" data-i18n="col_gb"></span><span class="sort-icon">↕</span></span></th>
+                  <th class="no-sort"                      style="width:160px"><span class="th-inner"><span class="th-text" data-i18n="col_usage"></span></span></th>
+                </tr></thead>
+                <tbody id="shares-body"><tr><td colspan="5" class="empty-state" data-i18n="loading"></td></tr></tbody>
+              </table>
+            </section>
+          </section>
+        </section>
+      </section>
+
+      <!-- ========== EXCEL ========== -->
+      <section id="tab-excel" class="tab-content">
+        <section class="card">
+          <header class="card-header"><h2 class="card-title" data-i18n="nav_excel"></h2></header>
+          <section class="card-body">
+            <menu class="excel-toolbar">
+              <label class="btn-primary" style="padding:6px 14px;border-radius:var(--radius);color:#fff;background:var(--primary);cursor:pointer">
+                <span data-i18n="upload_excel"></span>
+                <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display:none" onchange="onFileSelected(this)">
+              </label>
+              <button class="btn-success" id="export-btn" onclick="exportExcel()" data-i18n="export_excel"></button>
+              <button class="btn-primary" id="save-btn" onclick="saveExcel()" disabled data-i18n="save"></button>
+              <button class="btn-secondary" id="sync-btn" onclick="syncFromNAS()" disabled data-i18n="sync_from_nas"></button>
+              <button class="btn-secondary btn-sm" onclick="addRow()" data-i18n="add_row"></button>
+              <span class="dirty-badge" id="dirty-badge" style="display:none" data-i18n="unsaved"></span>
+            </menu>
+            <p class="excel-meta" id="excel-meta"></p>
+            <section class="table-wrap">
+              <table class="excel-table" id="excel-table">
+                <thead id="excel-thead"></thead>
+                <tbody id="excel-tbody"><tr><td colspan="10" class="empty-state" data-i18n="no_data"></td></tr></tbody>
+              </table>
+            </section>
+          </section>
+        </section>
+      </section>
+
+      <!-- ========== HISTORY ========== -->
+      <section id="tab-history" class="tab-content">
+        <section class="card">
+          <header class="card-header"><h2 class="card-title" data-i18n="version_history"></h2></header>
+          <section class="card-body">
+            <nav class="history-tabs">
+              <button class="htab active" onclick="showHistoryTab('uploads',this)" data-i18n="uploads_tab"></button>
+              <button class="htab" onclick="showHistoryTab('edits',this)" data-i18n="edits_tab"></button>
+              <button class="htab" onclick="showHistoryTab('mappings',this)" data-i18n="mappings_tab"></button>
+            </nav>
+            <ul id="history-uploads"  class="history-list"></ul>
+            <ul id="history-edits"    class="history-list" style="display:none"></ul>
+            <ul id="history-mappings" class="history-list" style="display:none"></ul>
+          </section>
+        </section>
+      </section>
+
+      <!-- ========== SETTINGS ========== -->
+      <section id="tab-settings" class="tab-content">
+        <section class="card"><section class="card-body">
+          <section class="settings-section">
+            <h3 data-i18n="share_paths"></h3>
+            <ul id="share-paths-list"></ul>
+            <p style="display:flex;gap:8px;margin-top:8px">
+              <input id="new-share-path" placeholder="/volume1" style="flex:1">
+              <button class="btn-secondary" onclick="addSharePath()" data-i18n="add"></button>
+            </p>
+          </section>
+          <section class="settings-section">
+            <h3 data-i18n="exclude_shares"></h3>
+            <ul id="exclude-list"></ul>
+            <p style="display:flex;gap:8px;margin-top:8px">
+              <input id="new-exclude" placeholder="@eaDir">
+              <button class="btn-secondary" onclick="addExclude()" data-i18n="add"></button>
+            </p>
+          </section>
+          <section class="settings-section">
+            <h3 data-i18n="billing_formula"></h3>
+            <p class="form-row">
+              <label class="form-label" data-i18n="mailbox_gb_label"></label>
+              <input type="number" id="mailbox-gb" min="0" step="0.5" style="width:90px">
+              <span style="color:var(--muted);font-size:12px;margin-left:6px">= <span data-i18n="factur_formula_hint"></span></span>
+            </p>
+          </section>
+          <section class="settings-section">
+            <h3 data-i18n="retention"></h3>
+            <p class="form-row">
+              <label class="form-label" data-i18n="upload_ret_label"></label>
+              <select id="upload-retention">
+                <option value="5">5</option><option value="10">10</option>
+                <option value="20">20</option><option value="50">50</option>
+              </select>
+            </p>
+            <p class="form-row">
+              <label class="form-label" data-i18n="edit_ret_label"></label>
+              <select id="edit-retention">
+                <option value="5">5</option><option value="10">10</option>
+                <option value="20">20</option><option value="50">50</option>
+              </select>
+            </p>
+          </section>
+          <section class="settings-section">
+            <h3>Login</h3>
+            <p class="form-row">
+              <label class="form-label">Username</label>
+              <input type="text" id="auth-username" style="width:180px" autocomplete="off">
+            </p>
+            <p class="form-row">
+              <label class="form-label">Password</label>
+              <input type="password" id="auth-password" style="width:180px" autocomplete="new-password" placeholder="Leave blank to keep current">
+            </p>
+          </section>
+          <button class="btn-primary" onclick="saveSettings()" data-i18n="save_settings"></button>
+        </section></section>
+      </section>
+
+    </section><!-- /content-area -->
+  </main>
+
+<!-- CONFIRM MODAL -->
+<dialog id="modal">
+  <article class="modal-box">
+    <h3 id="modal-title"></h3>
+    <p  id="modal-body"></p>
+    <footer class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()" data-i18n="cancel"></button>
+      <button class="btn-primary"   id="modal-confirm"     data-i18n="confirm"></button>
+    </footer>
+  </article>
+</dialog>
+
+<!-- MAPPING DIFF MODAL -->
+<dialog id="mapping-modal">
+  <article class="diff-modal-box">
+    <h3 data-i18n="mapping_title"></h3>
+    <p  data-i18n="mapping_sub"></p>
+    <section class="diff-scroll" id="mapping-diff-content"></section>
+    <footer class="modal-actions" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <button class="btn-secondary" onclick="closeMappingModal()" data-i18n="skip"></button>
+      <button class="btn-primary"   onclick="saveMappingDecision()" data-i18n="save_links"></button>
+    </footer>
+  </article>
+</dialog>
+
+<aside id="toasts"></aside>
+
+<script src="/static/javascript/index.js"></script>
+</body>
+</html>

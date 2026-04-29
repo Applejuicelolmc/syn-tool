@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storage Manager — Login</title>
+<link rel="icon" type="image/x-icon" href="/static/branding/favicon.ico">
+<link rel="stylesheet" href="/static/css/index.css">
+<link rel="stylesheet" href="/static/css/login.css">
+</head>
+<body>
+<main class="login-card">
+  <header class="login-brand">
+    <img src="/static/branding/logo.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+      <rect x="2" y="3" width="20" height="5" rx="1"/>
+      <rect x="2" y="10" width="20" height="5" rx="1"/>
+      <rect x="2" y="17" width="20" height="5" rx="1"/>
+      <circle cx="18" cy="5.5" r="1" fill="#3b82f6" stroke="none"/>
+      <circle cx="18" cy="12.5" r="1" fill="#3b82f6" stroke="none"/>
+    </svg>
+    <span>Storage Manager</span>
+  </header>
+  <label for="login-username">Username</label>
+  <input type="text" id="login-username" autocomplete="username">
+  <label for="login-password">Password</label>
+  <input type="password" id="login-password" autocomplete="current-password">
+  <button class="login-submit" id="login-btn">Login</button>
+  <p class="login-error" id="login-error"></p>
+</main>
+<script src="/static/javascript/login.js"></script>
+</body>
+</html>
