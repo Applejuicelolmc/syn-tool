@@ -144,11 +144,11 @@ Fields:
 - Reads checked shares from `.sched-share-cb` checkboxes; aborts with error if none selected
 - Reads schedule from `id="sched-day"` (1–28), `id="sched-hour"` (0–23), `id="sched-minute"` (0–59)
 - POSTs `{ shares: [...], day, hour, minute }` to `/api/dsm/setup_monthly_reports`
-- Shows inline summary: existing reports count, newly created reports, failed ones, schedule type
-  - `monthly`: `✓ Maandelijks schema (dag 1, 03:00)`
-  - `weekly_monday`: `⚠ Wekelijks schema — maandelijks niet ondersteund door DSM API`
-  - `task_scheduler_monthly`: `✓ Task Scheduler taak aangemaakt (maandelijks, dag 1, 03:00)`
-  - no schedule: `✗ Schema instellen mislukt — stel handmatig in via DSM`
+- Shows a toast (success/warning/error, 9s timeout for warn/error) with multi-line detail: existing reports count, created/failed shares, schedule type, DSM error codes
+- Inline span shows just `✓ Klaar` / `✗ Mislukt`
+- Toast errors include full DSM error codes from all attempts (Report.Config + TaskScheduler v1/v4 × owner combinations)
+
+`toast(msg, type)` — updated to use `innerHTML` with `\n→<br>` conversion. Error/warning toasts stay 9s (default 3.2s). `.toast.error/.warning` max-width 520px.
 
 Share selection: uses `.sched-share-cb` checkboxes from the unified shares table above (Rapport column). `schedSelectAll(bool)` toggles all.
 Schedule picker: `id="sched-day"` / `id="sched-hour"` / `id="sched-minute"` — number inputs, defaults 1 / 3 / 0.

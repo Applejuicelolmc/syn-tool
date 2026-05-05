@@ -189,9 +189,10 @@ function getVolumeTotal(sharePath) {
 function toast(msg, type = 'info') {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.textContent = msg;
+  el.innerHTML = escapeHtml(msg).replace(/\n/g, '<br>');
   document.getElementById('toasts').appendChild(el);
-  setTimeout(() => { el.classList.add('fading'); setTimeout(() => el.remove(), 320); }, 3200);
+  const delay = (type === 'error' || type === 'warning') ? 9000 : 3200;
+  setTimeout(() => { el.classList.add('fading'); setTimeout(() => el.remove(), 320); }, delay);
 }
 
 // ===================== MODAL =====================
@@ -1099,51 +1100,56 @@ async function setupMonthlyReports() {
   const btn    = document.getElementById('dsm-setup-btn');
   const result = document.getElementById('dsm-setup-result');
   btn.disabled = true;
-  result.textContent = 'Bezig...';
+  result.textContent = 'Bezig…';
   result.style.color = 'var(--muted)';
   try {
     const selected = [...document.querySelectorAll('.sched-share-cb:checked')].map(cb => cb.value);
     if (!selected.length) {
-      result.style.color = 'var(--error, red)';
-      result.textContent = 'Selecteer ten minste één share';
+      toast('Selecteer ten minste één share in de Rapport-kolom', 'warning');
+      result.textContent = '';
       btn.disabled = false;
       return;
     }
-    const payload = {
-      shares: selected,
-      day:    parseInt(document.getElementById('sched-day').value)    || 1,
-      hour:   parseInt(document.getElementById('sched-hour').value)   || 3,
-      minute: parseInt(document.getElementById('sched-minute').value) || 0,
-    };
-    const data = await apiPost('/api/dsm/setup_monthly_reports', payload);
-    const parts = [];
+    const day    = parseInt(document.getElementById('sched-day').value)    || 1;
+    const hour   = parseInt(document.getElementById('sched-hour').value)   || 3;
+    const minute = parseInt(document.getElementById('sched-minute').value) || 0;
+    const data = await apiPost('/api/dsm/setup_monthly_reports', { shares: selected, day, hour, minute });
+
+    const pad = n => String(n).padStart(2, '0');
+    const timeStr = `dag ${day}, ${pad(hour)}:${pad(minute)}`;
+    const lines = [];
 
     if (data.existing_reports.length)
-      parts.push(`${data.existing_reports.length} bestaand rapport(en)`);
+      lines.push(`${data.existing_reports.length} bestaande rapport(en) gevonden`);
     if (data.created.length)
-      parts.push(`Aangemaakt: ${data.created.join(', ')}`);
-    if (data.failed.length) {
-      const names = data.failed.map(f => f.share || '?').join(', ');
-      parts.push(`Mislukt: ${names}`);
-    }
+      lines.push(`Nieuw aangemaakt: ${data.created.join(', ')}`);
+    if (data.failed.length)
+      lines.push(`Aanmaken mislukt: ${data.failed.map(f => `${f.share || '?'} (code ${f.code || '?'})`).join(', ')}`);
 
+    let schedLine = '';
     if (data.schedule_type === 'monthly')
-      parts.push('✓ Maandelijks schema (dag 1, 03:00)');
+      schedLine = `✓ Maandelijks schema ingesteld (${timeStr})`;
     else if (data.schedule_type === 'weekly_monday')
-      parts.push('⚠ Wekelijks schema (maandag 03:00) — maandelijks niet ondersteund door DSM API');
+      schedLine = `⚠ Wekelijks schema ingesteld (maandag ${pad(hour)}:${pad(minute)}) — DSM ondersteunt geen maandelijks schema via API`;
     else if (data.schedule_type === 'task_scheduler_monthly')
-      parts.push('✓ Task Scheduler taak aangemaakt (maandelijks, dag 1, 03:00)');
+      schedLine = `✓ Taakplanner-taak aangemaakt (maandelijks, ${timeStr})`;
     else
-      parts.push('✗ Schema instellen mislukt — stel handmatig in via DSM');
+      schedLine = `✗ Schema instellen mislukt — voeg handmatig een taak toe in DSM > Taakplanner`;
+
+    lines.push(schedLine);
 
     if (data.errors && data.errors.length)
-      parts.push(data.errors.join('; '));
+      data.errors.forEach(e => lines.push(e));
+
+    const toastType = data.schedule_set ? (data.schedule_type === 'weekly_monday' ? 'warning' : 'success') : 'error';
+    toast(lines.join('\n'), toastType);
 
     result.style.color = data.schedule_set ? 'var(--success, green)' : 'var(--error, red)';
-    result.textContent = parts.join(' | ') || 'Klaar';
+    result.textContent = data.schedule_set ? '✓ Klaar' : '✗ Mislukt';
   } catch(err) {
+    toast(`Maandelijkse rapporten: ${err.message}`, 'error');
     result.style.color = 'var(--error, red)';
-    result.textContent = `✗ ${err.message}`;
+    result.textContent = '✗ Fout';
   } finally {
     btn.disabled = false;
   }

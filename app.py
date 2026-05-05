@@ -1272,41 +1272,46 @@ def api_dsm_setup_monthly_reports():
         except Exception as ex:
             out['failed'].append({'share': share, 'error': str(ex)})
 
-    # Set schedule via Storage Analyzer config — only include report_location when set.
-    # Monthly is not natively supported; weekly is the best this API offers.
+    # Set schedule via Storage Analyzer config.
+    # Monthly is not natively supported by this API; weekly is the best available.
     schedule_set = False
+    cfg_errors = []
     h, m, d = str(sched_hour), str(sched_minute), str(sched_day)
-    base_params = {'hour': h, 'minute': m}
-    if report_location:
-        base_params['report_location'] = report_location
+    # Always send report_location (empty string is fine — omitting it can cause rejection)
     for extra, label in [
-        ({'schedule_type': 'monthly', 'month_day': d}, 'monthly'),
-        ({'month_day': d}, 'monthly'),
-        ({'week_day': '1'}, 'weekly_monday'),
+        ({'schedule_type': 'monthly', 'month_day': d, 'hour': h, 'minute': m,
+          'report_location': report_location}, 'monthly'),
+        ({'month_day': d, 'hour': h, 'minute': m,
+          'report_location': report_location}, 'monthly'),
+        ({'week_day': '1', 'hour': h, 'minute': m,
+          'report_location': report_location}, 'weekly_monday'),
+        ({'week_day': 1, 'hour': sched_hour, 'minute': sched_minute,
+          'report_location': report_location}, 'weekly_monday'),
     ]:
         if schedule_set:
             break
         try:
-            r = dsm_post(dict(api='SYNO.Core.Report.Config', version='1', method='set',
-                              **base_params, **extra))
+            r = dsm_post(dict(api='SYNO.Core.Report.Config', version='1', method='set', **extra))
             if r.get('success'):
                 schedule_set = True
                 out['schedule_type'] = label
-        except Exception:
-            pass
+            else:
+                code = r.get('error', {}).get('code', '?')
+                cfg_errors.append(f'Report.Config code {code}')
+        except Exception as ex:
+            cfg_errors.append(f'Report.Config: {ex}')
 
-    # Fallback: DSM Task Scheduler script task.
-    # Delete any pre-existing task with the same name first (avoids 4800 name-conflict).
-    # Try API versions 1 then 4 — version requirement varies by DSM release.
+    # Fallback: DSM Task Scheduler script task (monthly cron-style).
+    # Error 4800 causes: wrong owner, wrong task JSON structure, or name conflict.
+    # Try multiple owner/format combinations to maximise compatibility.
     if not schedule_set:
-        cmd = '/usr/syno/bin/syno_volume_analyze -w eval-timetable'
+        cmd      = '/usr/syno/bin/syno_volume_analyze -w eval-timetable'
         task_name = 'Storage Analyzer Maandelijks'
 
-        # Delete existing task with this name if present
+        # Delete any pre-existing task with this name to avoid name-conflict 4800
         try:
             r = dsm_post({'api': 'SYNO.Core.TaskScheduler', 'version': '1', 'method': 'list'})
-            tasks = r.get('data', {}).get('tasks', []) if r.get('success') else []
-            for t in tasks:
+            for t in (r.get('data', {}).get('tasks', []) if r.get('success') else []):
                 if t.get('name') == task_name and t.get('can_delete'):
                     dsm_post({'api': 'SYNO.Core.TaskScheduler', 'version': '1',
                               'method': 'delete', 'id': str(t['id'])})
@@ -1317,17 +1322,24 @@ def api_dsm_setup_monthly_reports():
             'date': str(sched_day), 'date_type': 0,
             'hour': sched_hour, 'minute': sched_minute,
             'repeat_min': 0, 'repeat_min_store_config': 30,
-            'week_day': '0,1,2,3,4,5,6',
+            'week_day': '',
         })
-        last_error = ''
-        for ts_ver in ['1', '4']:
+        ts_errors = []
+        # Try: authenticated user as owner (root may be rejected), versions 1 then 4,
+        # with and without notify fields
+        for ts_ver, owner, task_extra in [
+            ('1', dsm_user, {}),
+            ('1', 'root',   {}),
+            ('4', dsm_user, {'notify_enable': False, 'notify_mail': '', 'notify_if_error': False}),
+            ('4', 'root',   {'notify_enable': False, 'notify_mail': '', 'notify_if_error': False}),
+        ]:
             if schedule_set:
                 break
-            task_json = json.dumps({'owner': 'root', 'script': cmd})
+            task_json = json.dumps({'owner': owner, 'script': cmd, **task_extra})
             try:
                 r = dsm_post({
                     'api': 'SYNO.Core.TaskScheduler', 'version': ts_ver, 'method': 'create',
-                    'name': task_name, 'owner': 'root', 'enable': 'true',
+                    'name': task_name, 'owner': owner, 'enable': 'true',
                     'schedule': schedule_json, 'task': task_json,
                 })
                 if r.get('success'):
@@ -1335,13 +1347,21 @@ def api_dsm_setup_monthly_reports():
                     out['schedule_type'] = 'task_scheduler_monthly'
                     out['task_created']  = True
                 else:
-                    code = r.get('error', {}).get('code', '?')
-                    last_error = f'code {code} (v{ts_ver})'
+                    code   = r.get('error', {}).get('code', '?')
+                    detail = r.get('error', {}).get('errors', '')
+                    msg = f'TaskScheduler v{ts_ver} owner={owner}: code {code}'
+                    if detail:
+                        msg += f' ({detail})'
+                    ts_errors.append(msg)
             except Exception as ex:
-                last_error = str(ex)
+                ts_errors.append(f'TaskScheduler v{ts_ver}: {ex}')
 
         if not schedule_set:
-            out['errors'].append(f'Task Scheduler aanmaken mislukt ({last_error}) — stel handmatig in via DSM')
+            all_errs = cfg_errors + ts_errors
+            out['errors'].append(
+                'Schema instellen mislukt. Probeer het handmatig in DSM > Taakplanner in te stellen '
+                f'(commando: {cmd}). DSM foutmeldingen: {" | ".join(all_errs)}'
+            )
 
     out['schedule_set']     = schedule_set
     out['covered_shares']   = sorted(covered)
