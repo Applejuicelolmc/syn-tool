@@ -152,8 +152,10 @@ Requires DSM credentials to be saved in config. Steps:
 2. Lists existing Storage Analyzer reports (`SYNO.Core.Report&method=list`), extracts covered shares
 3. Discovers non-filtered shares from `share_paths` (minus `exclude_shares`)
 4. Creates report profiles for uncovered shares via `SYNO.Core.Report&method=create` with `id=syntool_{share}` — error 4907 ("folder already exists") counts as already-covered
-5. Tries to set monthly schedule via `SYNO.Core.Report.Config&method=set` with `month_day=1, hour=3` (tries `schedule_type=monthly` first, plain `month_day` second, weekly Monday fallback third)
-6. If schedule config fails: creates a DSM Task Scheduler script task (`/usr/syno/bin/syno_volume_analyze -w eval-timetable`, monthly day 1 03:00) via `SYNO.Core.TaskScheduler&method=create`
+5. Tries to set monthly schedule via `SYNO.Core.Report.Config&method=set` using user-chosen day/hour/minute (tries `schedule_type=monthly` first, plain `month_day` second, weekly Monday fallback third)
+6. If schedule config fails: creates a DSM Task Scheduler script task (`/usr/syno/bin/syno_volume_analyze -w eval-timetable`) via `SYNO.Core.TaskScheduler&method=create` — `task` parameter must be a JSON object (flat params cause error 4800)
+
+Body: `{ shares: ["ShareA", "ShareB"], day: 1, hour: 3, minute: 0 }` — explicit share list from UI checkboxes; schedule time clamped server-side (day 1–28, hour 0–23, minute 0–59). If `shares` is empty/absent, auto-discovers all non-filtered shares from the filesystem.
 
 Returns:
 ```json

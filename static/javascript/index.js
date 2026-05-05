@@ -976,6 +976,20 @@ function renderSettings() {
   document.getElementById('dsm-password').value = '';
   const pwSet = document.getElementById('dsm-password-set');
   if (pwSet) pwSet.style.display = config.dsm_password_set ? 'inline' : 'none';
+
+  const schedList = document.getElementById('sched-shares-list');
+  if (state.shares.length) {
+    const sorted = state.shares.slice().sort((a, b) => a.name.localeCompare(b.name));
+    schedList.innerHTML = sorted.map(s =>
+      `<label style="display:block;padding:2px 0;cursor:pointer"><input type="checkbox" class="sched-share-cb" value="${escapeHtml(s.name)}" checked> ${escapeHtml(s.name)}</label>`
+    ).join('');
+  } else {
+    schedList.innerHTML = '<em style="color:var(--muted)">Scan het dashboard eerst om de lijst te laden</em>';
+  }
+}
+
+function schedSelectAll(checked) {
+  document.querySelectorAll('.sched-share-cb').forEach(cb => { cb.checked = checked; });
 }
 
 function addSharePath() {
@@ -1058,7 +1072,20 @@ async function setupMonthlyReports() {
   result.textContent = 'Bezig...';
   result.style.color = 'var(--muted)';
   try {
-    const data = await apiPost('/api/dsm/setup_monthly_reports', {});
+    const selected = [...document.querySelectorAll('.sched-share-cb:checked')].map(cb => cb.value);
+    if (!selected.length) {
+      result.style.color = 'var(--error, red)';
+      result.textContent = 'Selecteer ten minste één share';
+      btn.disabled = false;
+      return;
+    }
+    const payload = {
+      shares: selected,
+      day:    parseInt(document.getElementById('sched-day').value)    || 1,
+      hour:   parseInt(document.getElementById('sched-hour').value)   || 3,
+      minute: parseInt(document.getElementById('sched-minute').value) || 0,
+    };
+    const data = await apiPost('/api/dsm/setup_monthly_reports', payload);
     const parts = [];
 
     if (data.existing_reports.length)

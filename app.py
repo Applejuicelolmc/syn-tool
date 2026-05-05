@@ -1157,6 +1157,12 @@ def api_dsm_setup_monthly_reports():
     if not dsm_user or not dsm_pw_enc:
         return jsonify({'error': 'DSM-inloggegevens niet ingesteld in Instellingen'}), 400
 
+    body   = request.get_json() or {}
+    sched_day    = max(1, min(28, int(body.get('day',    1))))
+    sched_hour   = max(0, min(23, int(body.get('hour',   3))))
+    sched_minute = max(0, min(59, int(body.get('minute', 0))))
+    requested_shares = [str(s).strip() for s in body.get('shares', []) if str(s).strip()]
+
     dsm_pw   = _decrypt_credential(dsm_pw_enc)
     base_url = f"http://{dsm_host}:{dsm_port}"
     exclude  = set(cfg.get('exclude_shares', []))
@@ -1234,7 +1240,12 @@ def api_dsm_setup_monthly_reports():
             pass
 
     out['covered_shares'] = sorted(covered)
-    uncovered = sorted(non_filtered - covered)
+
+    # Use explicitly requested shares if provided; otherwise auto-discover all non-filtered
+    if requested_shares:
+        uncovered = [s for s in requested_shares if s not in covered]
+    else:
+        uncovered = sorted(non_filtered - covered)
 
     # Create Storage Analyzer report profiles for uncovered shares
     for share in uncovered:
@@ -1263,12 +1274,13 @@ def api_dsm_setup_monthly_reports():
 
     # Set schedule — try monthly first, then weekly as fallback
     schedule_set = False
+    h, m, d = str(sched_hour), str(sched_minute), str(sched_day)
     for attempt, label in [
-        ({'schedule_type': 'monthly', 'month_day': '1', 'hour': '3', 'minute': '0',
+        ({'schedule_type': 'monthly', 'month_day': d, 'hour': h, 'minute': m,
           'report_location': report_location}, 'monthly'),
-        ({'month_day': '1', 'hour': '3', 'minute': '0',
+        ({'month_day': d, 'hour': h, 'minute': m,
           'report_location': report_location}, 'monthly'),
-        ({'week_day': '1', 'hour': '3', 'minute': '0',
+        ({'week_day': '1', 'hour': h, 'minute': m,
           'report_location': report_location}, 'weekly_monday'),
     ]:
         if schedule_set:
@@ -1281,22 +1293,27 @@ def api_dsm_setup_monthly_reports():
         except Exception:
             pass
 
-    # Fallback: create a DSM Task Scheduler script task for monthly execution
+    # Fallback: create a DSM Task Scheduler script task for monthly execution.
+    # 'task' must be a JSON object (not flat params) — flat params cause error 4800.
     if not schedule_set:
         cmd = '/usr/syno/bin/syno_volume_analyze -w eval-timetable'
         try:
             schedule_json = json.dumps({
-                'date': '1', 'date_type': 0,
-                'hour': 3, 'minute': 0, 'repeat_min': 0,
+                'date': str(sched_day), 'date_type': 0,
+                'hour': sched_hour, 'minute': sched_minute,
+                'repeat_min': 0, 'repeat_min_store_config': 30,
                 'week_day': '0,1,2,3,4,5,6',
+            })
+            task_json = json.dumps({
+                'owner': 'root', 'script': cmd, 'type': 'script',
+                'notify_enable': False, 'notify_mail': '', 'notify_if_error': False,
             })
             r = dsm_post({
                 'api': 'SYNO.Core.TaskScheduler', 'version': '4', 'method': 'create',
                 'name': 'Storage Analyzer Maandelijks',
                 'owner': 'root', 'enable': 'true',
                 'schedule': schedule_json,
-                'task_type': 'script',
-                'script': cmd,
+                'task': task_json,
             })
             if r.get('success'):
                 schedule_set = True

@@ -212,6 +212,19 @@
               <span id="dsm-test-result" style="font-size:12px;margin-left:8px"></span>
             </p>
             <p class="form-row">
+              <label class="form-label">Shares</label>
+              <span>
+                <div id="sched-shares-list" style="max-height:130px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:5px 8px;background:var(--bg);font-size:13px;min-width:200px"></div>
+                <div style="margin-top:4px;font-size:12px;color:var(--muted)">
+                  <a href="#" onclick="schedSelectAll(true);return false" style="color:var(--primary)">Alles</a> &middot; <a href="#" onclick="schedSelectAll(false);return false" style="color:var(--primary)">Geen</a>
+                </div>
+              </span>
+            </p>
+            <p class="form-row">
+              <label class="form-label">Tijdstip</label>
+              <span style="font-size:13px">Dag&nbsp;<input type="number" id="sched-day" value="1" min="1" max="28" style="width:46px;text-align:center">&nbsp;van de maand om&nbsp;<input type="number" id="sched-hour" value="3" min="0" max="23" style="width:46px;text-align:center">:<input type="number" id="sched-minute" value="0" min="0" max="59" style="width:46px;text-align:center">&nbsp;u</span>
+            </p>
+            <p class="form-row">
               <label class="form-label"></label>
               <button class="btn-secondary" onclick="setupMonthlyReports()" id="dsm-setup-btn">Maandelijkse rapporten instellen</button>
               <span id="dsm-setup-result" style="font-size:12px;margin-left:8px"></span>

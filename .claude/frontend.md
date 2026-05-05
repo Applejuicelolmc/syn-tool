@@ -127,12 +127,17 @@ Fields:
 - Success: `✓ Verbonden — N rapport(en) gevonden`; failure: `✗ <error>`
 
 `setupMonthlyReports()` — `id="dsm-setup-btn"` / result in `id="dsm-setup-result"`:
-- POSTs to `/api/dsm/setup_monthly_reports` (no body — uses stored DSM credentials)
+- Reads checked shares from `.sched-share-cb` checkboxes; aborts with error if none selected
+- Reads schedule from `id="sched-day"` (1–28), `id="sched-hour"` (0–23), `id="sched-minute"` (0–59)
+- POSTs `{ shares: [...], day, hour, minute }` to `/api/dsm/setup_monthly_reports`
 - Shows inline summary: existing reports count, newly created reports, failed ones, schedule type
   - `monthly`: `✓ Maandelijks schema (dag 1, 03:00)`
   - `weekly_monday`: `⚠ Wekelijks schema — maandelijks niet ondersteund door DSM API`
   - `task_scheduler_monthly`: `✓ Task Scheduler taak aangemaakt (maandelijks, dag 1, 03:00)`
   - no schedule: `✗ Schema instellen mislukt — stel handmatig in via DSM`
+
+Share picker: `id="sched-shares-list"` — populated in `renderSettings()` from `state.shares` (sorted alphabetically, all checked by default). Shows "Scan het dashboard eerst" if `state.shares` is empty. `schedSelectAll(bool)` toggles all checkboxes.
+Schedule picker: `id="sched-day"` / `id="sched-hour"` / `id="sched-minute"` — number inputs, defaults 1 / 3 / 0.
 
 ## Auth / Login
 
