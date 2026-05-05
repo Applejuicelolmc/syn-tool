@@ -144,7 +144,7 @@
           </section>
           <section class="settings-section">
             <h3>Shares</h3>
-            <p style="color:var(--muted);font-size:12px;margin-bottom:10px">Scan: opnemen in de dashboardscan. Rapport: maandelijks Storage Analyzer rapport instellen.</p>
+            <p style="color:var(--muted);font-size:12px;margin-bottom:10px">Selecteer welke shares worden meegenomen in de dashboardscan.</p>
             <div id="unified-shares-table"></div>
           </section>
           <section class="settings-section">
@@ -208,15 +208,6 @@
               <button class="btn-secondary" onclick="testDsmConnection()" id="dsm-test-btn">Verbinding testen</button>
               <span id="dsm-test-result" style="font-size:12px;margin-left:8px"></span>
             </p>
-            <p class="form-row">
-              <label class="form-label">Tijdstip</label>
-              <span style="font-size:13px">Dag&nbsp;<input type="number" id="sched-day" value="1" min="1" max="28" style="width:46px;text-align:center">&nbsp;van de maand om&nbsp;<input type="number" id="sched-hour" value="3" min="0" max="23" style="width:46px;text-align:center">:<input type="number" id="sched-minute" value="0" min="0" max="59" style="width:46px;text-align:center">&nbsp;u</span>
-            </p>
-            <p class="form-row">
-              <label class="form-label"></label>
-              <button class="btn-secondary" onclick="setupMonthlyReports()" id="dsm-setup-btn">Maandelijkse rapporten instellen</button>
-              <span id="dsm-setup-result" style="font-size:12px;margin-left:8px"></span>
-            </p>
           </section>
           <button class="btn-primary" onclick="saveSettings()" data-i18n="save_settings"></button>
         </section></section>
@@ -233,30 +224,6 @@
     <footer class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()" data-i18n="cancel"></button>
       <button class="btn-primary"   id="modal-confirm"     data-i18n="confirm"></button>
-    </footer>
-  </article>
-</dialog>
-
-<!-- SCHEDULE MANUAL MODAL -->
-<dialog id="schedule-modal">
-  <article class="modal-box" style="max-width:560px">
-    <h3>Taakplanner handmatig instellen</h3>
-    <p style="color:var(--muted);font-size:13px;margin-bottom:14px" id="sched-modal-err"></p>
-    <ol style="font-size:13px;line-height:1.9;padding-left:18px;margin:0 0 14px">
-      <li>Open <strong>DSM &gt; Configuratiescherm &gt; Taakplanner</strong></li>
-      <li>Klik <strong>Maken &gt; Geplande taak &gt; Gebruikersscript</strong></li>
-      <li>Tab <em>Algemeen</em>: naam <strong>Storage Analyzer Maandelijks</strong>, gebruiker <strong>root</strong>, vink <em>Ingeschakeld</em> aan</li>
-      <li>Tab <em>Planning</em>: stel in op <strong>Maandelijks</strong>, dag <strong id="sched-modal-day"></strong>, tijd <strong id="sched-modal-time"></strong></li>
-      <li>Tab <em>Taakinstellingen</em>: plak dit script in het invoerveld:<br>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-          <code id="sched-modal-cmd" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;flex:1;word-break:break-all"></code>
-          <button class="btn-secondary" style="white-space:nowrap;font-size:12px" onclick="copySchedCmd()">Kopieer</button>
-        </div>
-      </li>
-      <li>Klik <strong>OK</strong> en bevestig eventuele waarschuwing</li>
-    </ol>
-    <footer class="modal-actions">
-      <button class="btn-primary" onclick="closeSchedModal()">Sluiten</button>
     </footer>
   </article>
 </dialog>

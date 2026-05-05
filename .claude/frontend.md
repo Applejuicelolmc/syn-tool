@@ -115,14 +115,11 @@ Three sub-tabs: Uploads / Edits / Links (mappings).
 ### Unified shares table (`id="unified-shares-table"`)
 Replaces the old "Exclude Shares" text-input list. Populated in `renderSettings()` from `state.shares` (sorted A–Z). Shows "scan first" message if no shares loaded.
 
-Each row:
-- Share name + analyzer badge: `📊 YYYY-MM-DD` (green, `var(--success)`) if `analyzer_date` set, else `Geen rapport` (muted)
+Each row (Scan checkbox left, share name + badge right):
 - **Scan** checkbox (`.share-scan-cb`, `data-share="name"`): unchecked = add to `exclude_shares` on save. Default: checked unless share is currently in `exclude_shares`.
-- **Rapport** checkbox (`.sched-share-cb`, `value="name"`): used by `setupMonthlyReports()`. Default: all checked.
+- Share name + analyzer badge: `📊 YYYY-MM-DD` (green, `var(--success)`) if `analyzer_date` set, else `Geen rapport` (muted)
 
-Checkbox states survive re-renders (saved to `prevScan`/`prevRapport` maps before innerHTML overwrite).
-
-`schedSelectAll(bool)` toggles all `.sched-share-cb` checkboxes (Rapport column only).
+Checkbox states survive re-renders (saved to `prevScan` map before innerHTML overwrite).
 
 `saveSettings()` derives `exclude_shares` from: @/# patterns preserved + named exclusions not in table + unchecked Scan rows. Falls back to `state.settings.exclude_shares` if table not rendered.
 
@@ -131,7 +128,7 @@ Fields:
 - upload/edit retention (select 5/10/20/50)
 - Auth: `auth-username` text input + `auth-password` password input (blank = keep existing)
 - DSM section: `dsm-host`, `dsm-port`, `dsm-user`, `dsm-password` (password input)
-  - `renderSettings()` populates DSM fields from `state.settings`; shows `(wachtwoord opgeslagen)` hint when `dsm_password_set` is true
+  - `renderSettings()` populates DSM fields from `state.settings`; shows `✓ ingesteld` hint when `dsm_password_set` is true
   - `saveSettings()` always sends `dsm_host`, `dsm_port`, `dsm_user`; only sends `dsm_password` if non-empty
 
 ### DSM actions
@@ -140,25 +137,7 @@ Fields:
 - POSTs to `/api/settings/test_dsm`
 - Success: `✓ Verbonden — N rapport(en) gevonden`; failure: `✗ <error>`
 
-`setupMonthlyReports()` — `id="dsm-setup-btn"` / result in `id="dsm-setup-result"`:
-- Reads checked shares from `.sched-share-cb` checkboxes; aborts with error if none selected
-- Reads schedule from `id="sched-day"` (1–28), `id="sched-hour"` (0–23), `id="sched-minute"` (0–59)
-- POSTs `{ shares: [...], day, hour, minute }` to `/api/dsm/setup_monthly_reports`
-- On success/warning: shows toast with multi-line detail (created/failed shares, schedule type)
-- On `!data.schedule_set`: calls `showScheduleManualModal(cmd, day, hour, minute, errDetail)` — opens `<dialog id="schedule-modal">` with step-by-step DSM Taakplanner instructions
-- Inline span shows `✓ Klaar` / `✗ Handmatig instellen vereist — zie instructies`
-
-### Schedule manual modal (`id="schedule-modal"`)
-Shown when automatic Task Scheduler creation fails. Contains numbered steps for manually creating a Taakplanner entry in DSM.
-- `showScheduleManualModal(cmd, day, hour, minute, errDetail)` — populates `#sched-modal-cmd`, `#sched-modal-day`, `#sched-modal-time`, shows error reason in `#sched-modal-err`
-- `closeSchedModal()` — closes the dialog
-- `copySchedCmd()` — copies `#sched-modal-cmd` text to clipboard, shows success toast
-- Click-outside and Escape both close the modal (wired in DOMContentLoaded)
-
 `toast(msg, type)` — uses `innerHTML` with `\n→<br>` conversion. Error/warning toasts stay 9s (default 3.2s). `.toast.error/.warning` max-width 520px.
-
-Share selection: uses `.sched-share-cb` checkboxes from the unified shares table above (Rapport column). `schedSelectAll(bool)` toggles all.
-Schedule picker: `id="sched-day"` / `id="sched-hour"` / `id="sched-minute"` — number inputs, defaults 1 / 3 / 0.
 
 ## Auth / Login
 

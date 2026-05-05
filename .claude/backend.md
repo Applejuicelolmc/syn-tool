@@ -146,40 +146,6 @@ Body: `{ dsm_host, dsm_port, dsm_user, dsm_password }` or `{ ..., use_stored_pas
 Authenticates to DSM and calls `SYNO.Core.Report&method=list`.
 Returns `{ success, report_count }` or `{ error }`.
 
-### `POST /api/dsm/setup_monthly_reports`
-Requires DSM credentials to be saved in config. Steps:
-1. Authenticates to DSM
-2. Lists existing Storage Analyzer reports (`SYNO.Core.Report&method=list`), extracts covered shares
-3. Discovers non-filtered shares from `share_paths` (minus `exclude_shares`)
-4. Creates report profiles for uncovered shares via `SYNO.Core.Report&method=create` with `id=syntool_{share}` — error 4907 ("folder already exists") counts as already-covered
-5. Tries to set monthly schedule via `SYNO.Core.Report.Config&method=set` using user-chosen day/hour/minute (tries `schedule_type=monthly` first, plain `month_day` second, weekly Monday fallback third)
-6. If schedule config fails: deletes any pre-existing "Storage Analyzer Maandelijks" task (avoids 4800 name-conflict), then creates a new one via `SYNO.Core.TaskScheduler&method=create`. Tries API versions 1 then 4. `task` param = minimal JSON `{"owner":"root","script":"..."}` — extra fields or wrong version cause error 4800. `report_location` only included in Config set when non-empty.
-
-Body: `{ shares: ["ShareA", "ShareB"], day: 1, hour: 3, minute: 0 }` — explicit share list from UI checkboxes; schedule time clamped server-side (day 1–28, hour 0–23, minute 0–59). If `shares` is empty/absent, auto-discovers all non-filtered shares from the filesystem.
-
-Returns:
-```json
-{
-  "success": true,
-  "existing_reports": ["GSuite Storage Report", ...],
-  "covered_shares": ["GsuiteBackup", ...],
-  "created": ["M365BUAddmodum"],
-  "failed": [{"share": "X", "code": 103, "msg": "..."}],
-  "schedule": { "hour": 3, "minute": 0, "report_location": "..." },
-  "schedule_type": "monthly" | "weekly_monday" | "task_scheduler_monthly" | null,
-  "schedule_set": true,
-  "task_created": false,
-  "errors": []
-}
-```
-
-**DSM API notes (from NAS testing):**
-- `SYNO.Core.Report&method=create` is valid — error 4907 = folder already exists (not 103 = method not found)
-- `SYNO.Core.Report&method=add` and `method=update` return 103 (not valid methods)
-- `SYNO.Core.TaskScheduler&method=list` confirmed working; `method=create` assumed valid
-- Scan trigger binary: `/usr/syno/bin/syno_volume_analyze -w eval-timetable` (confirmed from `/etc/cron.d/`)
-- `/var/packages/StorageAnalyzer` package exists; `scripts/start-stop-status` calls `StartServices` / `StopSynoreport`
-
 ## Share size measurement
 
 ### Priority order

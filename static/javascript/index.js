@@ -975,9 +975,8 @@ function renderSettings() {
   if (pwSet) pwSet.style.display = config.dsm_password_set ? 'inline' : 'none';
 
   // Save current checkbox states so re-renders (e.g. add share path) don't reset selections
-  const prevScan = {}, prevRapport = {};
+  const prevScan = {};
   document.querySelectorAll('.share-scan-cb').forEach(cb => { prevScan[cb.dataset.share] = cb.checked; });
-  document.querySelectorAll('.sched-share-cb').forEach(cb => { prevRapport[cb.value] = cb.checked; });
 
   const tableEl = document.getElementById('unified-shares-table');
   const excludeSet = new Set(config.exclude_shares || []);
@@ -986,35 +985,24 @@ function renderSettings() {
   } else {
     const sorted = state.shares.slice().sort((a, b) => a.name.localeCompare(b.name));
     const rows = sorted.map(s => {
-      const scanChecked   = s.name in prevScan    ? prevScan[s.name]    : !excludeSet.has(s.name);
-      const rapportChecked = s.name in prevRapport ? prevRapport[s.name] : true;
+      const scanChecked = s.name in prevScan ? prevScan[s.name] : !excludeSet.has(s.name);
       const badge = s.analyzer_date
         ? `<span style="font-size:10px;color:var(--success);margin-left:6px" title="Laatste Storage Analyzer scan">📊 ${escapeHtml(s.analyzer_date)}</span>`
         : `<span style="font-size:10px;color:var(--muted);margin-left:6px">Geen rapport</span>`;
       return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="text-align:center;padding:5px 8px;width:40px"><input type="checkbox" class="share-scan-cb" data-share="${escapeHtml(s.name)}" ${scanChecked ? 'checked' : ''}></td>
         <td style="padding:5px 8px">${escapeHtml(s.name)}${badge}</td>
-        <td style="text-align:center;padding:5px 8px"><input type="checkbox" class="share-scan-cb" data-share="${escapeHtml(s.name)}" ${scanChecked ? 'checked' : ''}></td>
-        <td style="text-align:center;padding:5px 8px"><input type="checkbox" class="sched-share-cb" value="${escapeHtml(s.name)}" ${rapportChecked ? 'checked' : ''}></td>
       </tr>`;
     }).join('');
     tableEl.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:center;padding:4px 8px;font-weight:500;width:40px">Scan</th>
           <th style="text-align:left;padding:4px 8px;font-weight:500">Share</th>
-          <th style="text-align:center;padding:4px 8px;font-weight:500;width:54px">Scan</th>
-          <th style="text-align:center;padding:4px 8px;font-weight:500;width:64px">Rapport</th>
         </tr></thead>
         <tbody>${rows}</tbody>
-      </table>
-      <div style="margin-top:5px;font-size:12px;color:var(--muted)">
-        Rapport: <a href="#" onclick="schedSelectAll(true);return false" style="color:var(--primary)">Alles</a>
-        &middot; <a href="#" onclick="schedSelectAll(false);return false" style="color:var(--primary)">Geen</a>
-      </div>`;
+      </table>`;
   }
-}
-
-function schedSelectAll(checked) {
-  document.querySelectorAll('.sched-share-cb').forEach(cb => { cb.checked = checked; });
 }
 
 function addSharePath() {
@@ -1096,85 +1084,6 @@ async function testDsmConnection() {
   }
 }
 
-function showScheduleManualModal(cmd, day, hour, minute, errDetail) {
-  const pad = n => String(n).padStart(2, '0');
-  document.getElementById('sched-modal-cmd').textContent  = cmd;
-  document.getElementById('sched-modal-day').textContent  = day;
-  document.getElementById('sched-modal-time').textContent = `${pad(hour)}:${pad(minute)}`;
-  const errEl = document.getElementById('sched-modal-err');
-  if (errDetail) {
-    errEl.textContent = `Automatisch instellen mislukt: ${errDetail}`;
-    errEl.style.display = '';
-  } else {
-    errEl.style.display = 'none';
-  }
-  document.getElementById('schedule-modal').showModal();
-}
-
-function closeSchedModal() { document.getElementById('schedule-modal').close(); }
-
-function copySchedCmd() {
-  const cmd = document.getElementById('sched-modal-cmd').textContent;
-  navigator.clipboard.writeText(cmd).then(() => toast('Gekopieerd naar klembord', 'success'));
-}
-
-async function setupMonthlyReports() {
-  const btn    = document.getElementById('dsm-setup-btn');
-  const result = document.getElementById('dsm-setup-result');
-  btn.disabled = true;
-  result.textContent = 'Bezig…';
-  result.style.color = 'var(--muted)';
-  try {
-    const selected = [...document.querySelectorAll('.sched-share-cb:checked')].map(cb => cb.value);
-    if (!selected.length) {
-      toast('Selecteer ten minste één share in de Rapport-kolom', 'warning');
-      result.textContent = '';
-      btn.disabled = false;
-      return;
-    }
-    const day    = parseInt(document.getElementById('sched-day').value)    || 1;
-    const hour   = parseInt(document.getElementById('sched-hour').value)   || 3;
-    const minute = parseInt(document.getElementById('sched-minute').value) || 0;
-    const data = await apiPost('/api/dsm/setup_monthly_reports', { shares: selected, day, hour, minute });
-
-    const pad = n => String(n).padStart(2, '0');
-    const timeStr = `dag ${day}, ${pad(hour)}:${pad(minute)}`;
-    const toastLines = [];
-
-    if (data.created.length)
-      toastLines.push(`✓ Rapport aangemaakt: ${data.created.join(', ')}`);
-    if (data.failed.length)
-      toastLines.push(`✗ Aanmaken mislukt: ${data.failed.map(f => `${f.share || '?'} (code ${f.code || '?'})`).join(', ')}`);
-
-    if (data.schedule_type === 'monthly')
-      toastLines.push(`✓ Maandelijks schema ingesteld (${timeStr})`);
-    else if (data.schedule_type === 'weekly_monday')
-      toastLines.push(`⚠ Wekelijks schema ingesteld (maandag ${pad(hour)}:${pad(minute)}) — DSM ondersteunt geen maandelijks schema via API`);
-    else if (data.schedule_type === 'task_scheduler_monthly')
-      toastLines.push(`✓ Taakplanner-taak aangemaakt (maandelijks, ${timeStr})`);
-
-    if (!data.schedule_set) {
-      // Show a detailed manual-setup modal instead of a tiny toast
-      const cmd  = data.schedule_cmd || '/usr/syno/bin/syno_volume_analyze -w eval-timetable';
-      const errDetail = (data.errors || []).join('\n');
-      showScheduleManualModal(cmd, day, hour, minute, errDetail);
-      result.style.color = 'var(--error, red)';
-      result.textContent = '✗ Handmatig instellen vereist — zie instructies';
-    } else {
-      const toastType = data.schedule_type === 'weekly_monday' ? 'warning' : 'success';
-      if (toastLines.length) toast(toastLines.join('\n'), toastType);
-      result.style.color = 'var(--success, green)';
-      result.textContent = '✓ Klaar';
-    }
-  } catch(err) {
-    toast(`Maandelijkse rapporten: ${err.message}`, 'error');
-    result.style.color = 'var(--error, red)';
-    result.textContent = '✗ Fout';
-  } finally {
-    btn.disabled = false;
-  }
-}
-
 // ===================== INIT =====================
 document.addEventListener('DOMContentLoaded', async () => {
   lang = detectLanguage();
@@ -1191,10 +1100,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (event.target === document.getElementById('mapping-modal')) closeMappingModal();
   });
   document.getElementById('mapping-modal').addEventListener('cancel', () => closeMappingModal());
-  document.getElementById('schedule-modal').addEventListener('click', event => {
-    if (event.target === document.getElementById('schedule-modal')) closeSchedModal();
-  });
-  document.getElementById('schedule-modal').addEventListener('cancel', () => closeSchedModal());
   window.addEventListener('beforeunload', event => {
     if (state.isDirty) { event.preventDefault(); }
   });
